@@ -1,0 +1,119 @@
+.ultigrid-insight-cell {
+  box-sizing: border-box;
+  position: relative;
+  isolation: isolate;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  overflow: hidden;
+  color: #1f2937;
+  background: #fff;
+  font: 400 13px/1.35 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", sans-serif;
+  cursor: default;
+  user-select: none;
+}
+
+.ultigrid-insight-cell__visual-layer {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.ultigrid-insight-cell__data-bar {
+  position: absolute;
+  top: 5px;
+  bottom: 5px;
+  min-width: 1px;
+  border-radius: 3px;
+  opacity: 0.25;
+}
+
+.ultigrid-insight-cell__data-bar[data-negative="true"] {
+  border-radius: 3px 0 0 3px;
+}
+
+.ultigrid-insight-cell__content-layer {
+  box-sizing: border-box;
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: var(--ultigrid-insight-cell-align-y, center);
+  justify-content: var(--ultigrid-insight-cell-align-x, flex-start);
+  gap: 6px;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  padding: var(--ultigrid-insight-cell-padding-block, 6px) var(--ultigrid-insight-cell-padding-inline, 10px);
+}
+
+.ultigrid-insight-cell__value {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.ultigrid-insight-cell--truncate .ultigrid-insight-cell__value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ultigrid-insight-cell--wrap .ultigrid-insight-cell__value {
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.ultigrid-insight-cell__media,
+.ultigrid-insight-cell__icon {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+}
+
+.ultigrid-insight-cell__media {
+  width: 24px;
+  height: 24px;
+  overflow: hidden;
+  border-radius: 5px;
+}
+
+.ultigrid-insight-cell__media img,
+.ultigrid-insight-cell__background-image img {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.ultigrid-insight-cell__background-image {
+  position: absolute;
+  inset: 0;
+}
+
+.ultigrid-insight-cell__icon {
+  width: 16px;
+  height: 16px;
+  line-height: 1;
+}
+
+.ultigrid-insight-cell--selected::after,
+.ultigrid-insight-cell--active::after {
+  content: "";
+  position: absolute;
+  z-index: 3;
+  inset: 0;
+  border: 1px solid #5b6cf9;
+  pointer-events: none;
+}
+
+.ultigrid-insight-cell--active::after {
+  border-width: 2px;
+}
+
+.ultigrid-insight-cell--disabled {
+  color: #94a3b8;
+  background-color: #f8fafc;
+  cursor: not-allowed;
+}

@@ -1,0 +1,13 @@
+{
+  "extends": "../../tsconfig.app.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "emitDeclarationOnly": true,
+    "declaration": true,
+    "declarationMap": false,
+    "rootDir": "../../src/core",
+    "outDir": "./dist/types",
+    "tsBuildInfoFile": "./dist/types/.tsbuildinfo"
+  },
+  "include": ["../../src/core/**/*.ts", "../../src/core/**/*.tsx"]
+}

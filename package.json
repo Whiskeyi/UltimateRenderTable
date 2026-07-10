@@ -1,0 +1,37 @@
+{
+  "name": "ultigrid-workspace",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "workspaces": [
+    "packages/core",
+    "packages/insight"
+  ],
+  "scripts": {
+    "dev": "vite",
+    "build": "npm run build:packages && npm run build:demo",
+    "build:demo": "tsc -b && vite build",
+    "build:packages": "npm run build:core && npm run build:insight",
+    "build:core": "vite build --config packages/core/vite.config.ts && tsc -p packages/core/tsconfig.build.json",
+    "build:insight": "vite build --config packages/insight/vite.config.ts && tsc -p packages/insight/tsconfig.build.json",
+    "verify:packages": "node scripts/verify-packages.mjs",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "html-to-image": "^1.11.13",
+    "lucide-react": "^0.468.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "write-excel-file": "^4.1.1"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "typescript": "~5.7.2",
+    "vite": "^6.0.5",
+    "vitest": "^2.1.8"
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "name": "@ultigrid/core",
+  "version": "0.1.0",
+  "description": "High-performance DOM viewport engine for virtualized multidimensional grids.",
+  "license": "MIT",
+  "keywords": ["react", "data-grid", "virtualization", "table", "dom"],
+  "type": "module",
+  "sideEffects": [
+    "./dist/style.css"
+  ],
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/types/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./style.css": "./dist/style.css"
+  },
+  "scripts": {
+    "prepack": "npm --prefix ../.. run build:core"
+  },
+  "peerDependencies": {
+    "react": ">=18.2 <20",
+    "react-dom": ">=18.2 <20"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

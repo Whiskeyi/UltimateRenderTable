@@ -1,0 +1,183 @@
+.ultigrid-root {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  color: #25282d;
+  background: #fff;
+  border: 1px solid #dfe3e8;
+  border-radius: 12px;
+  outline: none;
+  contain: strict;
+  isolation: isolate;
+  --ultigrid-grid-line: #e7e9ed;
+  --ultigrid-selection: #23a35a;
+  --ultigrid-selection-soft: rgba(35, 163, 90, 0.09);
+}
+
+.ultigrid-root:focus-visible {
+  box-shadow: 0 0 0 3px rgba(35, 163, 90, 0.16);
+}
+
+.ultigrid-scroller {
+  position: absolute;
+  inset: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  -webkit-overflow-scrolling: touch;
+}
+
+.ultigrid-scroller::-webkit-scrollbar {
+  width: 11px;
+  height: 11px;
+}
+
+.ultigrid-scroller::-webkit-scrollbar-track {
+  background: #f5f6f7;
+}
+
+.ultigrid-scroller::-webkit-scrollbar-thumb {
+  background: #c8cdd3;
+  border: 3px solid #f5f6f7;
+  border-radius: 999px;
+}
+
+.ultigrid-scroller::-webkit-scrollbar-thumb:hover {
+  background: #9da4ad;
+}
+
+.ultigrid-canvas {
+  position: relative;
+  min-width: 100%;
+  min-height: 100%;
+}
+
+.ultigrid-viewport {
+  position: sticky;
+  top: 0;
+  left: 0;
+  overflow: hidden;
+  background: #fff;
+  contain: strict;
+  --ultigrid-scroll-x: 0px;
+  --ultigrid-scroll-y: 0px;
+}
+
+.ultigrid-pane {
+  position: absolute;
+  overflow: hidden;
+  pointer-events: none;
+  contain: strict;
+}
+
+.ultigrid-pane__cells {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+  will-change: transform;
+}
+
+.ultigrid-pane--start-start,
+.ultigrid-pane--start-middle,
+.ultigrid-pane--start-end {
+  box-shadow: 0 1px 0 #d7dbe0;
+}
+
+.ultigrid-pane--middle-start,
+.ultigrid-pane--end-start,
+.ultigrid-pane--start-start {
+  box-shadow: 1px 0 0 #d7dbe0;
+}
+
+.ultigrid-pane--middle-end,
+.ultigrid-pane--end-end,
+.ultigrid-pane--start-end {
+  box-shadow: -1px 0 0 #d7dbe0;
+}
+
+.ultigrid-pane--end-start,
+.ultigrid-pane--end-middle,
+.ultigrid-pane--end-end {
+  box-shadow: 0 -1px 0 #d7dbe0;
+}
+
+.ultigrid-cell {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  overflow: hidden;
+  background: #fff;
+  border-right: 1px solid var(--ultigrid-grid-line);
+  border-bottom: 1px solid var(--ultigrid-grid-line);
+  cursor: cell;
+  pointer-events: auto;
+  user-select: none;
+  contain: layout paint style;
+}
+
+.ultigrid-cell:hover {
+  background: #f8faf9;
+}
+
+.ultigrid-cell.is-selected {
+  background-image: linear-gradient(var(--ultigrid-selection-soft), var(--ultigrid-selection-soft));
+}
+
+.ultigrid-cell.is-active::after {
+  position: absolute;
+  inset: -1px;
+  z-index: 4;
+  border: 2px solid var(--ultigrid-selection);
+  content: '';
+  pointer-events: none;
+}
+
+.ultigrid-cell.is-active::before {
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  z-index: 5;
+  width: 6px;
+  height: 6px;
+  background: var(--ultigrid-selection);
+  border: 1px solid #fff;
+  content: '';
+}
+
+.ultigrid-cell--merged {
+  z-index: 2;
+}
+
+.ultigrid-cell__content {
+  width: 100%;
+  min-width: 0;
+  padding: 0 10px;
+  overflow: hidden;
+  font-size: 12px;
+  line-height: 1.45;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ultigrid-empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: #8b9199;
+  font-size: 13px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ultigrid-scroller {
+    scroll-behavior: auto;
+  }
+}

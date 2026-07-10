@@ -1,0 +1,17 @@
+{
+  "extends": "../../tsconfig.app.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "emitDeclarationOnly": true,
+    "declaration": true,
+    "declarationMap": false,
+    "rootDir": "../../src/bi",
+    "outDir": "./dist/types",
+    "tsBuildInfoFile": "./dist/types/.tsbuildinfo",
+    "baseUrl": "../..",
+    "paths": {
+      "@ultigrid/core": ["./packages/core/dist/types/index.d.ts"]
+    }
+  },
+  "include": ["../../src/bi/**/*.ts", "../../src/bi/**/*.tsx"]
+}

@@ -1,0 +1,42 @@
+{
+  "name": "@ultigrid/insight",
+  "version": "0.1.0",
+  "description": "BI-ready application grid built on @ultigrid/core.",
+  "license": "MIT",
+  "keywords": ["react", "bi", "data-grid", "conditional-formatting", "export"],
+  "type": "module",
+  "sideEffects": [
+    "./dist/style.css"
+  ],
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/types/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./style.css": "./dist/style.css"
+  },
+  "dependencies": {
+    "@ultigrid/core": "^0.1.0",
+    "html-to-image": "^1.11.13",
+    "lucide-react": "^0.468.0",
+    "write-excel-file": "^4.1.1"
+  },
+  "scripts": {
+    "prepack": "npm --prefix ../.. run build:core && npm --prefix ../.. run build:insight"
+  },
+  "peerDependencies": {
+    "react": ">=18.2 <20",
+    "react-dom": ">=18.2 <20"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
