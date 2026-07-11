@@ -39,6 +39,13 @@ export interface VirtualWindow {
   readonly columns: VirtualRange
 }
 
+export interface VirtualIndexRange {
+  readonly start: number
+  readonly end: number
+}
+
+export type VirtualScrollDirection = -1 | 0 | 1
+
 /**
  * Computes the visible and overscanned item range for one axis.
  *
@@ -110,6 +117,54 @@ export function getVisibleRange2D(options: VirtualWindowOptions): VirtualWindow 
   }
 }
 
+/**
+ * Keeps a rendered range stable while the exact visible range moves inside
+ * its overscan buffer. When the buffer is replenished, more items are placed
+ * in the current scroll direction without increasing the total item budget.
+ */
+export function retainVirtualRange(
+  visible: VirtualIndexRange,
+  previous: VirtualIndexRange | undefined,
+  overscan: number,
+  direction: VirtualScrollDirection,
+  minimum: number,
+  maximum: number,
+  previousOverscan: number = overscan,
+): VirtualIndexRange {
+  const buffer = assertOverscanCount(overscan, 'overscan')
+  const previousBuffer = assertOverscanCount(previousOverscan, 'previousOverscan')
+  if (visible.start < 0 || visible.end < visible.start || minimum > maximum) {
+    return { start: -1, end: -1 }
+  }
+
+  const visibleStart = Math.max(minimum, visible.start)
+  const visibleEnd = Math.min(maximum, visible.end)
+  if (visibleStart > visibleEnd) return { start: -1, end: -1 }
+
+  if (
+    previousBuffer === buffer &&
+    canRetainRange(previous, visibleStart, visibleEnd, buffer, direction, minimum, maximum)
+  ) {
+    return previous!
+  }
+
+  const totalBuffer = buffer * 2
+  let before = buffer
+  let after = buffer
+  if (direction > 0) {
+    before = Math.floor(buffer / 2)
+    after = totalBuffer - before
+  } else if (direction < 0) {
+    after = Math.floor(buffer / 2)
+    before = totalBuffer - after
+  }
+
+  return {
+    start: Math.max(minimum, visibleStart - before),
+    end: Math.min(maximum, visibleEnd + after),
+  }
+}
+
 function emptyRange(totalSize: number): VirtualRange {
   return {
     start: -1,
@@ -133,6 +188,30 @@ function normalizeOverscan(overscan: number | Partial<Overscan>): Overscan {
     before: assertOverscanCount(overscan.before ?? 0, 'overscan.before'),
     after: assertOverscanCount(overscan.after ?? 0, 'overscan.after'),
   }
+}
+
+function canRetainRange(
+  previous: VirtualIndexRange | undefined,
+  visibleStart: number,
+  visibleEnd: number,
+  overscan: number,
+  direction: VirtualScrollDirection,
+  minimum: number,
+  maximum: number,
+): boolean {
+  if (
+    !previous || previous.start < minimum || previous.end > maximum ||
+    previous.start > visibleStart || previous.end < visibleEnd
+  ) return false
+
+  const visibleCount = visibleEnd - visibleStart + 1
+  const previousCount = previous.end - previous.start + 1
+  if (previousCount > visibleCount + overscan * 2 + 2) return false
+
+  const guard = overscan > 1 ? 1 : 0
+  if (direction > 0) return previous.end === maximum || visibleEnd < previous.end - guard
+  if (direction < 0) return previous.start === minimum || visibleStart > previous.start + guard
+  return true
 }
 
 function assertOverscanCount(value: number, label: string): number {

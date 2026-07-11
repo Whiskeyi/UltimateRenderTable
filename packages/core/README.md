@@ -47,7 +47,7 @@ export function CoordinateGrid() {
 }
 ```
 
-Coordinates are zero-based and range ends are inclusive. Keep getters, size maps, merge arrays, and renderers referentially stable.
+Coordinates are zero-based and range ends are inclusive. Keep getters, size maps, merge arrays, and renderers referentially stable. Increment `contentVersion` whenever data behind a stable getter mutates in place.
 
 ## Public contract
 
@@ -56,7 +56,7 @@ Coordinates are zero-based and range ends are inclusive. Keep getters, size maps
 | Component | `UltiGridViewport` |
 | Data | `rowCount`, `columnCount`, `getCell` |
 | Layout | defaults, sparse size maps/getters, `frozen`, `overscan`, `fitColumns`, `autoSize` |
-| Rendering | `renderCell`, styles, classes, metadata, ARIA hooks |
+| Rendering | `renderCell`, styles, classes, metadata, ARIA hooks, `contentVersion` cache invalidation |
 | Merging | explicit, non-overlapping `MergedCellRange` rectangles, including horizontal and arbitrary 2D ranges |
 | Interaction | controlled/uncontrolled selection, keyboard navigation, TSV copy |
 | Theme | `themeColor` controls selection and focus accents; CSS variables remain available for deeper styling |
@@ -73,6 +73,8 @@ Axis, virtualizer, MergeIndex, and selection helpers are internal implementation
 ## Performance and memory
 
 - Row and column windows are located in `O(log N)` through typed segment trees.
+- Exact visible ranges are tracked separately from a direction-aware retained render window; scrolling inside its guard does not regroup React cells.
+- Scroll rAF writes pane-layer transforms directly. `onViewportChange` still reports exact visible bounds while `renderedCellCount` reports the retained workset.
 - Ordinary DOM follows the viewport, overscan, effective frozen regions, and merge fragments.
 - Sparse custom sizes use `ReadonlyMap`; the axis trees themselves use `O(Nᵣ + N𝚌)` memory.
 - A merge spanning many cells remains one indexed rectangle; Core never expands it into per-cell records.

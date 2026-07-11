@@ -680,13 +680,22 @@ function createTrendColumn(locale: Locale): InsightColumn<DemoRow> {
     header: <ColumnHeader label={translate(locale, 'demo.column.trend')} />,
     headerText: translate(locale, 'demo.column.trend'),
     getValue: (row) => metricValue(row.index, 8),
-    renderContent: ({ rowIndex, displayValue }) => (
-      <span className="demo-mini-chart" aria-label={translate(locale, 'demo.trend', { value: displayValue })}>
-        {Array.from({ length: 8 }, (_, index) => (
-          <i key={index} style={{ height: `${4 + (metricValue(rowIndex, index + 18) % 16)}px` }} />
-        ))}
-      </span>
-    ),
+    renderContent: ({ rowIndex, displayValue }) => {
+      const points = Array.from({ length: 8 }, (_, index) => (
+        `${index * 6},${20 - (4 + (metricValue(rowIndex, index + 18) % 16))}`
+      )).join(' ')
+      return (
+        <svg
+          className="demo-mini-chart"
+          viewBox="0 0 42 20"
+          preserveAspectRatio="none"
+          role="img"
+          aria-label={translate(locale, 'demo.trend', { value: displayValue })}
+        >
+          <polyline points={points} />
+        </svg>
+      )
+    },
   }
 }
 

@@ -81,6 +81,12 @@ Adjacent-value equality is application semantics: Insight derives vertical same-
 ## Cell DOM
 
 ```text
+Plain static text/style path:
+.ultigrid-cell
+└── .ultigrid-cell__content
+    └── .ultigrid-insight-cell--plain
+
+Rich path (rules, media, dynamic style, or custom renderer):
 .ultigrid-cell
 └── .ultigrid-cell__content
     └── .ultigrid-insight-cell
@@ -88,7 +94,7 @@ Adjacent-value equality is application semantics: Insight derives vertical same-
         └── content-layer    # images, icons, text, or a React component
 ```
 
-The visual layer ignores pointer events so decorations do not interfere with selection. Text truncates to one line by default; wrapping is opt-in.
+Both paths retain `.ultigrid-insight-cell` plus `data-row-id` / `data-column-id` as stable styling hooks. The visual layer ignores pointer events so decorations do not interfere with selection. Text truncates to one line by default; wrapping is opt-in.
 
 ## Coordinates and API
 
@@ -105,7 +111,7 @@ The root also exports row models, public component/column/cell types, conditiona
 
 ## Performance, memory, and export boundaries
 
-- Rendering inherits Core's two-axis viewport, pane, and merge-index costs.
+- Rendering inherits Core's retained two-axis window, direct pane-transform path, and merge-index costs.
 - Lazy columns use a bounded 2,048-entry cache; row and row-metadata caches hold at most 512 entries each.
 - Vertical adjacent merging scans the current row sequence across configured dimensions when its inputs change; generated regions default to a 100,000-item limit.
 - Conditional rules compile when Props change; visible-cell evaluation is approximately `O(W × R)`.

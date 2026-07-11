@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { Axis } from '../src/core/axis'
-import { getVirtualRange, getVisibleRange2D } from '../src/core/virtualizer'
+import {
+  getVirtualRange,
+  getVisibleRange2D,
+  retainVirtualRange,
+} from '../src/core/virtualizer'
 
 describe('getVirtualRange', () => {
   it('returns inclusive visible and overscanned ranges', () => {
@@ -61,5 +65,91 @@ describe('getVisibleRange2D', () => {
     expect([window.rows.start, window.rows.end]).toEqual([4, 10])
     expect([window.columns.visibleStart, window.columns.visibleEnd]).toEqual([2, 5])
     expect([window.columns.start, window.columns.end]).toEqual([0, 5])
+  })
+})
+
+describe('retainVirtualRange', () => {
+  it('keeps the render window while the visible range has forward buffer', () => {
+    const previous = { start: 6, end: 18 }
+
+    expect(retainVirtualRange(
+      { start: 11, end: 15 },
+      previous,
+      4,
+      1,
+      0,
+      99,
+    )).toBe(previous)
+  })
+
+  it('replenishes more overscan in the current scroll direction', () => {
+    expect(retainVirtualRange(
+      { start: 13, end: 17 },
+      { start: 6, end: 18 },
+      4,
+      1,
+      0,
+      99,
+    )).toEqual({ start: 11, end: 23 })
+
+    expect(retainVirtualRange(
+      { start: 12, end: 16 },
+      { start: 11, end: 23 },
+      4,
+      -1,
+      0,
+      99,
+    )).toEqual({ start: 6, end: 18 })
+  })
+
+  it('clamps retained windows to the scrollable band', () => {
+    expect(retainVirtualRange(
+      { start: 2, end: 5 },
+      undefined,
+      4,
+      -1,
+      2,
+      20,
+    )).toEqual({ start: 2, end: 7 })
+  })
+
+  it('rebuilds retention after the band or overscan budget changes', () => {
+    expect(retainVirtualRange(
+      { start: 10, end: 14 },
+      { start: 6, end: 18 },
+      4,
+      0,
+      10,
+      90,
+    )).toEqual({ start: 10, end: 18 })
+
+    expect(retainVirtualRange(
+      { start: 10, end: 14 },
+      { start: 4, end: 20 },
+      1,
+      0,
+      0,
+      99,
+    )).toEqual({ start: 9, end: 15 })
+
+    expect(retainVirtualRange(
+      { start: 10, end: 14 },
+      { start: 9, end: 15 },
+      2,
+      0,
+      0,
+      99,
+      1,
+    )).toEqual({ start: 8, end: 16 })
+
+    expect(retainVirtualRange(
+      { start: 10, end: 14 },
+      { start: 9, end: 15 },
+      0,
+      0,
+      0,
+      99,
+      1,
+    )).toEqual({ start: 10, end: 14 })
   })
 })

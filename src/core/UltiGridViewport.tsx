@@ -1,4 +1,5 @@
 import {
+  memo,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -8,13 +9,18 @@ import {
   type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
+  type RefCallback,
   type ReactNode,
 } from 'react'
 import { Axis } from './axis'
 import { getDragAutoScrollVelocity, resolveDragAddress } from './dragAutoScroll'
 import { MergeIndex, type MergeRegion } from './mergeIndex'
 import { rangeToTSV } from './selection'
-import { getVirtualRange } from './virtualizer'
+import {
+  getVirtualRange,
+  retainVirtualRange,
+  type VirtualScrollDirection,
+} from './virtualizer'
 import {
   normalizeCell,
   normalizeRange,
@@ -36,8 +42,6 @@ interface ElementSize {
 interface IndexWindow {
   start: number
   end: number
-  visibleStart: number
-  visibleEnd: number
 }
 
 interface WindowState {
@@ -59,7 +63,6 @@ interface AxisBand {
   clipStart: number
   clipSize: number
   coordinateBase: number
-  translateBase: number
 }
 
 interface Pane {
@@ -69,15 +72,120 @@ interface Pane {
   zIndex: number
 }
 
+interface PaneLayer {
+  element: HTMLDivElement
+  scrollRows: boolean
+  scrollColumns: boolean
+}
+
 const EMPTY_INDEX_WINDOW: IndexWindow = {
   start: -1,
   end: -1,
-  visibleStart: -1,
-  visibleEnd: -1,
 }
 
 const DEFAULT_COPY_LIMIT = 100_000
 const EMPTY_MERGES = Object.freeze([]) as readonly MergedCellRange[]
+
+interface CellSurfaceProps<TValue, TMeta> {
+  row: number
+  column: number
+  rowEnd: number
+  columnEnd: number
+  left: number
+  top: number
+  width: number
+  height: number
+  merged: boolean
+  renderCustomContent: boolean
+  selected: boolean
+  active: boolean
+  range: CellRange | null
+  contentVersion: string | number | undefined
+  rowCount: number
+  columnCount: number
+  getCell: UltiGridViewportProps<TValue, TMeta>['getCell']
+  renderCell: UltiGridViewportProps<TValue, TMeta>['renderCell']
+  cellText: (cell: TableCell<TValue, TMeta>, row: number, column: number) => string
+  beginSelection: (
+    address: CellAddress,
+    event: ReactPointerEvent<HTMLDivElement>,
+    cell: TableCell<TValue, TMeta>,
+  ) => void
+  extendSelection: (address: CellAddress) => void
+}
+
+function CellSurfaceImpl<TValue = CellPrimitive, TMeta = unknown>({
+  row,
+  column,
+  rowEnd,
+  columnEnd,
+  left,
+  top,
+  width,
+  height,
+  merged,
+  renderCustomContent,
+  selected,
+  active,
+  range,
+  getCell,
+  renderCell,
+  cellText,
+  beginSelection,
+  extendSelection,
+}: CellSurfaceProps<TValue, TMeta>) {
+  const source = normalizeCell(getCell(row, column))
+  const text = cellText(source, row, column)
+  const content = !renderCustomContent
+    ? null
+    : renderCell
+      ? renderCell({ row, column, cell: source, selected, active, merged, range })
+      : text
+  const address = { row, column }
+  const cellStyle: CSSProperties = {
+    ...source.style,
+    left,
+    top,
+    width,
+    height,
+    transform: undefined,
+  }
+
+  return (
+    <div
+      role="gridcell"
+      aria-rowindex={row + 1}
+      aria-colindex={column + 1}
+      aria-selected={selected}
+      aria-label={source.ariaLabel}
+      aria-level={source.ariaLevel}
+      aria-expanded={source.ariaExpanded}
+      aria-hidden={merged && !renderCustomContent ? true : undefined}
+      className={[
+        'ultigrid-cell',
+        merged && 'ultigrid-cell--merged',
+        merged && !renderCustomContent && 'ultigrid-cell--merge-fragment',
+        selected && 'is-selected',
+        active && 'is-active',
+        source.className,
+      ].filter(Boolean).join(' ')}
+      style={cellStyle}
+      data-ultigrid-cell="true"
+      data-merged={merged ? 'true' : 'false'}
+      data-row={row}
+      data-column={column}
+      data-row-end={rowEnd}
+      data-column-end={columnEnd}
+      title={!renderCustomContent || renderCell ? undefined : text}
+      onPointerDown={(event) => beginSelection(address, event, source)}
+      onPointerEnter={() => extendSelection(address)}
+    >
+      <div className="ultigrid-cell__content">{content}</div>
+    </div>
+  )
+}
+
+const CellSurface = memo(CellSurfaceImpl) as typeof CellSurfaceImpl
 
 export function UltiGridViewport<TValue = CellPrimitive, TMeta = unknown>(
   props: UltiGridViewportProps<TValue, TMeta>,
@@ -119,6 +227,8 @@ export function UltiGridViewport<TValue = CellPrimitive, TMeta = unknown>(
   const rootRef = useRef<HTMLDivElement>(null)
   const scrollerRef = useRef<HTMLDivElement>(null)
   const viewportRef = useRef<HTMLDivElement>(null)
+  const paneLayersRef = useRef(new Map<string, PaneLayer>())
+  const paneLayerCallbacksRef = useRef(new Map<string, RefCallback<HTMLDivElement>>())
   const scrollRafRef = useRef<number | null>(null)
   const dragAutoScrollRafRef = useRef<number | null>(null)
   const dragAutoScrollCallbackRef = useRef<() => void>(() => undefined)
@@ -230,20 +340,27 @@ export function UltiGridViewport<TValue = CellPrimitive, TMeta = unknown>(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rowAxis, columnAxis, rowCount, columnCount, fixed, size, axisRevision])
 
-  const computeWindow = useCallback((scrollTop: number, scrollLeft: number): WindowState => {
-    const rows = virtualBand(
+  const rowOverscan = overscan?.rows ?? 3
+  const columnOverscan = overscan?.columns ?? 2
+  const [windowState, setWindowState] = useState<WindowState>(() => ({
+    rows: EMPTY_INDEX_WINDOW,
+    columns: EMPTY_INDEX_WINDOW,
+  }))
+  const renderWindowRef = useRef<WindowState>(windowState)
+  const renderOverscanRef = useRef({ rows: rowOverscan, columns: columnOverscan })
+
+  const computeVisibleWindow = useCallback((scrollTop: number, scrollLeft: number): WindowState => {
+    const rows = visibleBand(
       rowAxis,
       scrollTop + dimensions.topHeight,
       dimensions.centerHeight,
-      overscan?.rows ?? 3,
       fixed.top,
       rowCount - fixed.bottom - 1,
     )
-    const columns = virtualBand(
+    const columns = visibleBand(
       columnAxis,
       scrollLeft + dimensions.leftWidth,
       dimensions.centerWidth,
-      overscan?.columns ?? 2,
       fixed.left,
       columnCount - fixed.right - 1,
     )
@@ -252,31 +369,30 @@ export function UltiGridViewport<TValue = CellPrimitive, TMeta = unknown>(
     rowAxis,
     columnAxis,
     dimensions,
-    overscan,
     fixed,
     rowCount,
     columnCount,
   ])
 
-  const [windowState, setWindowState] = useState<WindowState>(() => ({
-    rows: EMPTY_INDEX_WINDOW,
-    columns: EMPTY_INDEX_WINDOW,
-  }))
-
   const renderedRowCount = countWindow(windowState.rows) + fixed.top + fixed.bottom
   const renderedColumnCount = countWindow(windowState.columns) + fixed.left + fixed.right
 
-  const emitViewport = useCallback((nextWindow: WindowState, top: number, left: number) => {
+  const emitViewport = useCallback((
+    visibleWindow: WindowState,
+    renderedWindow: WindowState,
+    top: number,
+    left: number,
+  ) => {
     if (!onViewportChange) return
-    const visibleRows = countVisible(nextWindow.rows) + fixed.top + fixed.bottom
-    const visibleColumns = countVisible(nextWindow.columns) + fixed.left + fixed.right
-    const nextRenderedRows = countWindow(nextWindow.rows) + fixed.top + fixed.bottom
-    const nextRenderedColumns = countWindow(nextWindow.columns) + fixed.left + fixed.right
+    const visibleRows = countWindow(visibleWindow.rows) + fixed.top + fixed.bottom
+    const visibleColumns = countWindow(visibleWindow.columns) + fixed.left + fixed.right
+    const nextRenderedRows = countWindow(renderedWindow.rows) + fixed.top + fixed.bottom
+    const nextRenderedColumns = countWindow(renderedWindow.columns) + fixed.left + fixed.right
     const snapshot: ViewportSnapshot = {
-      rowStart: nextWindow.rows.visibleStart,
-      rowEnd: nextWindow.rows.visibleEnd,
-      columnStart: nextWindow.columns.visibleStart,
-      columnEnd: nextWindow.columns.visibleEnd,
+      rowStart: visibleWindow.rows.start,
+      rowEnd: visibleWindow.rows.end,
+      columnStart: visibleWindow.columns.start,
+      columnEnd: visibleWindow.columns.end,
       visibleCellCount: visibleRows * visibleColumns,
       renderedCellCount: nextRenderedRows * nextRenderedColumns,
       scrollTop: top,
@@ -285,19 +401,88 @@ export function UltiGridViewport<TValue = CellPrimitive, TMeta = unknown>(
     onViewportChange(snapshot)
   }, [onViewportChange, fixed])
 
+  const getPaneLayerRef = useCallback((
+    paneId: string,
+    rowKind: BandKind,
+    columnKind: BandKind,
+  ): RefCallback<HTMLDivElement> => {
+    const existing = paneLayerCallbacksRef.current.get(paneId)
+    if (existing) return existing
+    const callback: RefCallback<HTMLDivElement> = (element) => {
+      if (!element) {
+        paneLayersRef.current.delete(paneId)
+        return
+      }
+      const layer = {
+        element,
+        scrollRows: rowKind === 'middle',
+        scrollColumns: columnKind === 'middle',
+      }
+      paneLayersRef.current.set(paneId, layer)
+      applyPaneLayerTransform(layer, lastScrollRef.current.top, lastScrollRef.current.left)
+    }
+    paneLayerCallbacksRef.current.set(paneId, callback)
+    return callback
+  }, [])
+
+  const syncPaneTransforms = useCallback((top: number, left: number) => {
+    for (const layer of paneLayersRef.current.values()) {
+      applyPaneLayerTransform(layer, top, left)
+    }
+  }, [])
+
   const syncScroll = useCallback(() => {
     const scroller = scrollerRef.current
-    const viewport = viewportRef.current
-    if (!scroller || !viewport) return
+    if (!scroller || !viewportRef.current) return
     const top = scroller.scrollTop
     const left = scroller.scrollLeft
+    const previousScroll = lastScrollRef.current
+    const rowDirection = scrollDirection(top, previousScroll.top)
+    const columnDirection = scrollDirection(left, previousScroll.left)
     lastScrollRef.current = { top, left }
-    viewport.style.setProperty('--ultigrid-scroll-x', `${-left}px`)
-    viewport.style.setProperty('--ultigrid-scroll-y', `${-top}px`)
-    const nextWindow = computeWindow(top, left)
-    setWindowState((previous) => windowsEqual(previous, nextWindow) ? previous : nextWindow)
-    emitViewport(nextWindow, top, left)
-  }, [computeWindow, emitViewport])
+    syncPaneTransforms(top, left)
+
+    const visibleWindow = computeVisibleWindow(top, left)
+    const previousWindow = renderWindowRef.current
+    const previousOverscan = renderOverscanRef.current
+    const nextWindow = {
+      rows: retainVirtualRange(
+        visibleWindow.rows,
+        previousWindow.rows,
+        rowOverscan,
+        rowDirection,
+        fixed.top,
+        rowCount - fixed.bottom - 1,
+        previousOverscan.rows,
+      ),
+      columns: retainVirtualRange(
+        visibleWindow.columns,
+        previousWindow.columns,
+        columnOverscan,
+        columnDirection,
+        fixed.left,
+        columnCount - fixed.right - 1,
+        previousOverscan.columns,
+      ),
+    }
+    if (previousOverscan.rows !== rowOverscan || previousOverscan.columns !== columnOverscan) {
+      renderOverscanRef.current = { rows: rowOverscan, columns: columnOverscan }
+    }
+    if (!windowsEqual(previousWindow, nextWindow)) {
+      renderWindowRef.current = nextWindow
+      setWindowState(nextWindow)
+    }
+    emitViewport(visibleWindow, nextWindow, top, left)
+  }, [
+    columnCount,
+    columnOverscan,
+    computeVisibleWindow,
+    emitViewport,
+    fixed,
+    rowCount,
+    rowOverscan,
+    syncPaneTransforms,
+  ])
 
   const handleScroll = useCallback(() => {
     if (scrollRafRef.current !== null) return
@@ -780,6 +965,11 @@ export function UltiGridViewport<TValue = CellPrimitive, TMeta = unknown>(
     return { byPane, ownerByMerge }
   }, [panes, mergeIndex])
 
+  const rowOffsetCache = new Map<number, number>()
+  const columnOffsetCache = new Map<number, number>()
+  const rowOffset = (index: number) => cachedAxisOffset(rowAxis, rowOffsetCache, index)
+  const columnOffset = (index: number) => cachedAxisOffset(columnAxis, columnOffsetCache, index)
+
   const renderPane = (pane: Pane): ReactNode => {
     const merges = mergeFragments.byPane.get(pane.id) ?? []
     const coveredByRow = new Map<number, MergeRegion<CellRange>[]>()
@@ -818,7 +1008,6 @@ export function UltiGridViewport<TValue = CellPrimitive, TMeta = unknown>(
         ))
     }
 
-    const transform = paneTransform(pane)
     return (
       <div
         className={`ultigrid-pane ultigrid-pane--${pane.rows.kind}-${pane.columns.kind}`}
@@ -831,7 +1020,10 @@ export function UltiGridViewport<TValue = CellPrimitive, TMeta = unknown>(
           zIndex: pane.zIndex,
         }}
       >
-        <div className="ultigrid-pane__cells" style={transform}>
+        <div
+          ref={getPaneLayerRef(pane.id, pane.rows.kind, pane.columns.kind)}
+          className="ultigrid-pane__cells"
+        >
           {cells}
         </div>
       </div>
@@ -847,60 +1039,39 @@ export function UltiGridViewport<TValue = CellPrimitive, TMeta = unknown>(
   ) => {
     const row = bounds.rowStart
     const column = bounds.columnStart
-    const source = normalizeCell(getCell(row, column))
     const selected = rangeIntersects(bounds, selection)
     const focus = selectionModelRef.current?.focus
     const active = Boolean(selection && focus && focus.row === row && focus.column === column)
-    const text = cellText(source, row, column)
-    const content = !renderCustomContent
-      ? null
-      : renderCell
-        ? renderCell({ row, column, cell: source, selected, active, merged, range: selection })
-        : text
-    const x = columnAxis.getOffset(bounds.columnStart) - pane.columns.coordinateBase
-    const y = rowAxis.getOffset(bounds.rowStart) - pane.rows.coordinateBase
-    const width = columnAxis.getOffset(bounds.columnEnd + 1) - columnAxis.getOffset(bounds.columnStart)
-    const height = rowAxis.getOffset(bounds.rowEnd + 1) - rowAxis.getOffset(bounds.rowStart)
-    const address = { row, column }
-    const cellStyle: CSSProperties = {
-      ...source.style,
-      width,
-      height,
-      transform: `translate3d(${x}px, ${y}px, 0)`,
-    }
+    const columnStartOffset = columnOffset(bounds.columnStart)
+    const rowStartOffset = rowOffset(bounds.rowStart)
+    const width = columnOffset(bounds.columnEnd + 1) - columnStartOffset
+    const height = rowOffset(bounds.rowEnd + 1) - rowStartOffset
 
     return (
-      <div
+      <CellSurface
         key={key}
-        role="gridcell"
-        aria-rowindex={row + 1}
-        aria-colindex={column + 1}
-        aria-selected={selected}
-        aria-label={source.ariaLabel}
-        aria-level={source.ariaLevel}
-        aria-expanded={source.ariaExpanded}
-        aria-hidden={merged && !renderCustomContent ? true : undefined}
-        className={[
-          'ultigrid-cell',
-          merged && 'ultigrid-cell--merged',
-          merged && !renderCustomContent && 'ultigrid-cell--merge-fragment',
-          selected && 'is-selected',
-          active && 'is-active',
-          source.className,
-        ].filter(Boolean).join(' ')}
-        style={cellStyle}
-        data-ultigrid-cell="true"
-        data-merged={merged ? 'true' : 'false'}
-        data-row={row}
-        data-column={column}
-        data-row-end={bounds.rowEnd}
-        data-column-end={bounds.columnEnd}
-        title={!renderCustomContent || renderCell ? undefined : text}
-        onPointerDown={(event) => beginSelection(address, event, source)}
-        onPointerEnter={() => extendSelection(address)}
-      >
-        <div className="ultigrid-cell__content">{content}</div>
-      </div>
+        row={row}
+        column={column}
+        rowEnd={bounds.rowEnd}
+        columnEnd={bounds.columnEnd}
+        left={columnStartOffset - pane.columns.coordinateBase}
+        top={rowStartOffset - pane.rows.coordinateBase}
+        width={width}
+        height={height}
+        merged={merged}
+        renderCustomContent={renderCustomContent}
+        selected={selected}
+        active={active}
+        range={selection}
+        contentVersion={contentVersion}
+        rowCount={rowCount}
+        columnCount={columnCount}
+        getCell={getCell}
+        renderCell={renderCell}
+        cellText={cellText}
+        beginSelection={beginSelection}
+        extendSelection={extendSelection}
+      />
     )
   }
 
@@ -977,25 +1148,19 @@ function mergeOverrides(
   return result
 }
 
-function virtualBand(
+function visibleBand(
   axis: Axis,
   offset: number,
   viewportSize: number,
-  overscan: number,
   minimum: number,
   maximum: number,
 ): IndexWindow {
   if (axis.count === 0 || viewportSize <= 0 || minimum > maximum) return EMPTY_INDEX_WINDOW
-  const range = getVirtualRange(axis, offset, viewportSize, overscan)
-  const start = Math.max(minimum, range.start)
-  const end = Math.min(maximum, range.end)
+  const range = getVirtualRange(axis, offset, viewportSize, 0)
+  const start = Math.max(minimum, range.visibleStart)
+  const end = Math.min(maximum, range.visibleEnd)
   if (start > end) return EMPTY_INDEX_WINDOW
-  return {
-    start,
-    end,
-    visibleStart: clamp(range.visibleStart, minimum, maximum),
-    visibleEnd: clamp(range.visibleEnd, minimum, maximum),
-  }
+  return { start, end }
 }
 
 function normalizeFrozen(
@@ -1094,19 +1259,16 @@ function buildPanes(
       clipStart: 0,
       clipSize: dimensions.topHeight,
       coordinateBase: 0,
-      translateBase: 0,
     })
   }
   if (currentRows.start >= 0 && dimensions.centerHeight > 0) {
-    const base = rowAxis.getOffset(currentRows.start)
     rows.push({
       kind: 'middle',
       start: currentRows.start,
       end: currentRows.end,
       clipStart: dimensions.topHeight,
       clipSize: dimensions.centerHeight,
-      coordinateBase: base,
-      translateBase: base - dimensions.topHeight,
+      coordinateBase: dimensions.topHeight,
     })
   }
   if (fixed.bottom > 0 && dimensions.bottomHeight > 0) {
@@ -1117,7 +1279,6 @@ function buildPanes(
       clipStart: size.height - dimensions.bottomHeight,
       clipSize: dimensions.bottomHeight,
       coordinateBase: rowAxis.getOffset(dimensions.bottomStart),
-      translateBase: 0,
     })
   }
 
@@ -1129,19 +1290,16 @@ function buildPanes(
       clipStart: 0,
       clipSize: dimensions.leftWidth,
       coordinateBase: 0,
-      translateBase: 0,
     })
   }
   if (currentColumns.start >= 0 && dimensions.centerWidth > 0) {
-    const base = columnAxis.getOffset(currentColumns.start)
     columns.push({
       kind: 'middle',
       start: currentColumns.start,
       end: currentColumns.end,
       clipStart: dimensions.leftWidth,
       clipSize: dimensions.centerWidth,
-      coordinateBase: base,
-      translateBase: base - dimensions.leftWidth,
+      coordinateBase: dimensions.leftWidth,
     })
   }
   if (fixed.right > 0 && dimensions.rightWidth > 0) {
@@ -1152,33 +1310,28 @@ function buildPanes(
       clipStart: size.width - dimensions.rightWidth,
       clipSize: dimensions.rightWidth,
       coordinateBase: columnAxis.getOffset(dimensions.rightStart),
-      translateBase: 0,
     })
   }
 
   // With no frozen items the middle bands still need to exist.
   if (rows.length === 0 && currentRows.start >= 0 && size.height > 0) {
-    const base = rowAxis.getOffset(currentRows.start)
     rows.push({
       kind: 'middle',
       start: currentRows.start,
       end: currentRows.end,
       clipStart: 0,
       clipSize: size.height,
-      coordinateBase: base,
-      translateBase: base,
+      coordinateBase: 0,
     })
   }
   if (columns.length === 0 && currentColumns.start >= 0 && size.width > 0) {
-    const base = columnAxis.getOffset(currentColumns.start)
     columns.push({
       kind: 'middle',
       start: currentColumns.start,
       end: currentColumns.end,
       clipStart: 0,
       clipSize: size.width,
-      coordinateBase: base,
-      translateBase: base,
+      coordinateBase: 0,
     })
   }
 
@@ -1197,14 +1350,11 @@ function buildPanes(
   return panes
 }
 
-function paneTransform(pane: Pane): CSSProperties {
-  const x = pane.columns.kind === 'middle'
-    ? `calc(var(--ultigrid-scroll-x) + ${pane.columns.translateBase}px)`
-    : '0px'
-  const y = pane.rows.kind === 'middle'
-    ? `calc(var(--ultigrid-scroll-y) + ${pane.rows.translateBase}px)`
-    : '0px'
-  return { transform: `translate3d(${x}, ${y}, 0)` }
+function applyPaneLayerTransform(layer: PaneLayer, top: number, left: number): void {
+  const x = layer.scrollColumns ? -left : 0
+  const y = layer.scrollRows ? -top : 0
+  const transform = `translate3d(${x}px, ${y}px, 0)`
+  if (layer.element.style.transform !== transform) layer.element.style.transform = transform
 }
 
 function alignedScrollOffset(
@@ -1384,10 +1534,7 @@ function windowsEqual(left: WindowState, right: WindowState): boolean {
 }
 
 function indexWindowsEqual(left: IndexWindow, right: IndexWindow): boolean {
-  return left.start === right.start
-    && left.end === right.end
-    && left.visibleStart === right.visibleStart
-    && left.visibleEnd === right.visibleEnd
+  return left.start === right.start && left.end === right.end
 }
 
 function intersectWindow(range: IndexWindow, minimum: number, maximum: number): IndexWindow {
@@ -1395,20 +1542,23 @@ function intersectWindow(range: IndexWindow, minimum: number, maximum: number): 
   const start = Math.max(minimum, range.start)
   const end = Math.min(maximum, range.end)
   if (start > end) return EMPTY_INDEX_WINDOW
-  return {
-    start,
-    end,
-    visibleStart: clamp(range.visibleStart, start, end),
-    visibleEnd: clamp(range.visibleEnd, start, end),
-  }
+  return { start, end }
 }
 
 function countWindow(range: IndexWindow): number {
   return range.start < 0 ? 0 : range.end - range.start + 1
 }
 
-function countVisible(range: IndexWindow): number {
-  return range.visibleStart < 0 ? 0 : range.visibleEnd - range.visibleStart + 1
+function cachedAxisOffset(axis: Axis, cache: Map<number, number>, index: number): number {
+  const cached = cache.get(index)
+  if (cached !== undefined) return cached
+  const offset = axis.getOffset(index)
+  cache.set(index, offset)
+  return offset
+}
+
+function scrollDirection(current: number, previous: number): VirtualScrollDirection {
+  return current === previous ? 0 : current > previous ? 1 : -1
 }
 
 function mergeId(range: CellRange): string {

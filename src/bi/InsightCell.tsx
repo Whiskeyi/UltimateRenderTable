@@ -90,6 +90,7 @@ function InsightCellImpl<TRow = unknown, TValue = InsightCellValue>({
 
   const rootClassName = [
     'ultigrid-insight-cell',
+    embedded ? 'ultigrid-insight-cell--embedded' : '',
     visualStyle?.wrap ? 'ultigrid-insight-cell--wrap' : 'ultigrid-insight-cell--truncate',
     selected ? 'ultigrid-insight-cell--selected' : '',
     active ? 'ultigrid-insight-cell--active' : '',
@@ -104,9 +105,9 @@ function InsightCellImpl<TRow = unknown, TValue = InsightCellValue>({
       role={embedded ? 'presentation' : 'gridcell'}
       aria-colindex={embedded ? undefined : columnIndex + 1}
       aria-rowindex={embedded ? undefined : rowIndex + 1}
-      aria-selected={selected || undefined}
-      aria-disabled={disabled || undefined}
-      aria-label={ariaLabel}
+      aria-selected={embedded ? undefined : selected || undefined}
+      aria-disabled={embedded ? undefined : disabled || undefined}
+      aria-label={embedded ? undefined : ariaLabel}
       data-row-id={rowId}
       data-column-id={columnId}
       className={rootClassName}

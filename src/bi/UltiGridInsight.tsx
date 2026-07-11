@@ -169,6 +169,7 @@ export interface UltiGridInsightBaseProps<TRow> {
   overscan?: OverscanOptions
   fitColumns?: FitColumnsMode
   autoSize?: boolean | AutoSizeOptions
+  /** Increment after mutating data or column styles behind stable source/getter references. */
   contentVersion?: string | number
   showHeader?: boolean
   showRowNumbers?: boolean
@@ -212,6 +213,15 @@ interface DataMeta<TRow> {
   column: InsightColumn<TRow>
   columnIndex: number
   rowMeta?: RowMeta
+  plain: boolean
+  plainWrap: boolean
+}
+
+type PlainSurfaceStyle = CSSProperties & {
+  '--ultigrid-insight-cell-align-x': string
+  '--ultigrid-insight-cell-align-y': string
+  '--ultigrid-insight-cell-padding-block': string
+  '--ultigrid-insight-cell-padding-inline': string
 }
 
 interface HeaderMeta<TRow> {
@@ -311,6 +321,10 @@ export function UltiGridInsight<TRow>(props: UltiGridInsightProps<TRow>) {
   const formatterCache = useMemo(
     () => new WeakMap<InsightColumn<TRow>, CompiledConditionalFormatter<TRow, InsightCellValue>>(),
     [columns, getLazyColumn, activeConditionalRules],
+  )
+  const plainSurfaceStyleCache = useMemo(
+    () => new WeakMap<InsightColumn<TRow>, PlainSurfaceStyle>(),
+    [columns, getLazyColumn, contentVersion],
   )
   const rowCache = useMemo(() => new Map<number, TRow>(), [rowModel, rowSource, rows, modelVersion])
   const rowMetaCache = useMemo(
@@ -523,14 +537,34 @@ export function UltiGridInsight<TRow>(props: UltiGridInsightProps<TRow>) {
     const text = column.formatValue
       ? column.formatValue(value, row, rowIndex)
       : defaultDisplayValue(value)
+    const rowId = resolveRowId(row, rowIndex)
+    const staticVisualStyle = typeof column.visualStyle === 'function'
+      ? undefined
+      : column.visualStyle
+    const plain = activeConditionalRules.length === 0 &&
+      (column.conditionalRules?.length ?? 0) === 0 &&
+      column.id !== treeColumnId &&
+      !column.image &&
+      !column.icon &&
+      !column.component &&
+      !column.renderContent &&
+      typeof column.visualStyle !== 'function'
+    const plainVisualStyle = plain ? staticVisualStyle : undefined
+    let cachedPlainStyle = plain ? plainSurfaceStyleCache.get(column) : undefined
+    if (plain && !cachedPlainStyle) {
+      cachedPlainStyle = plainSurfaceStyle(plainVisualStyle)
+      plainSurfaceStyleCache.set(column, cachedPlainStyle)
+    }
     const meta: DataMeta<TRow> = {
       kind: 'data',
       row,
-      rowId: resolveRowId(row, rowIndex),
+      rowId,
       rowIndex,
       column,
       columnIndex,
       rowMeta,
+      plain,
+      plainWrap: Boolean(plainVisualStyle?.wrap),
     }
     return {
       value,
@@ -539,9 +573,12 @@ export function UltiGridInsight<TRow>(props: UltiGridInsightProps<TRow>) {
       ariaExpanded: rowMeta?.expandable ? rowMeta.expanded : undefined,
       className: [
         'ultigrid-insight-surface',
+        plain ? 'ultigrid-insight-surface--plain' : '',
+        plainVisualStyle?.wrap ? 'ultigrid-insight-surface--plain-wrap' : '',
         stripedRows && rowIndex % 2 === 1 ? 'ultigrid-insight-surface--striped' : '',
         column.className ?? '',
       ].filter(Boolean).join(' '),
+      style: cachedPlainStyle,
       meta,
     }
   }, [
@@ -555,6 +592,8 @@ export function UltiGridInsight<TRow>(props: UltiGridInsightProps<TRow>) {
     resolveRowId,
     stripedRows,
     treeColumnId,
+    activeConditionalRules,
+    plainSurfaceStyleCache,
   ])
 
   const renderInsightCell = useCallback((context: Parameters<NonNullable<React.ComponentProps<typeof UltiGridViewport>['renderCell']>>[0]) => {
@@ -569,6 +608,27 @@ export function UltiGridInsight<TRow>(props: UltiGridInsightProps<TRow>) {
     }
     if (meta.kind === 'rowNumber') {
       return <span className="ultigrid-insight-row-number">{meta.rowIndex + 1}</span>
+    }
+    if (meta.plain) {
+      return (
+        <span
+          role="presentation"
+          className={[
+            'ultigrid-insight-cell',
+            'ultigrid-insight-cell--embedded',
+            'ultigrid-insight-cell--plain',
+            'ultigrid-insight-plain-value',
+            meta.plainWrap ? 'ultigrid-insight-cell--wrap' : 'ultigrid-insight-cell--truncate',
+            context.selected ? 'ultigrid-insight-cell--selected' : '',
+            context.active ? 'ultigrid-insight-cell--active' : '',
+          ].filter(Boolean).join(' ')}
+          data-row-id={meta.rowId}
+          data-column-id={meta.column.id}
+          title={context.cell.text}
+        >
+          {context.cell.text}
+        </span>
+      )
     }
 
     const value = context.cell.value as InsightCellValue
@@ -878,6 +938,37 @@ function TreePrefix({
       ) : <span className="ultigrid-insight-tree-spacer" />}
     </span>
   )
+}
+
+function plainSurfaceStyle(visualStyle?: InsightCellVisualStyle): PlainSurfaceStyle {
+  return {
+    backgroundColor: visualStyle?.backgroundColor,
+    color: visualStyle?.color,
+    fontFamily: visualStyle?.fontFamily,
+    fontSize: visualStyle?.fontSize,
+    fontStyle: visualStyle?.fontStyle,
+    fontWeight: visualStyle?.fontWeight,
+    letterSpacing: visualStyle?.letterSpacing,
+    lineHeight: visualStyle?.lineHeight,
+    textDecoration: visualStyle?.textDecoration,
+    '--ultigrid-insight-cell-align-x': visualStyle?.horizontalAlign === 'right'
+      ? 'flex-end'
+      : visualStyle?.horizontalAlign === 'center'
+        ? 'center'
+        : 'flex-start',
+    '--ultigrid-insight-cell-align-y': visualStyle?.verticalAlign === 'top'
+      ? 'flex-start'
+      : visualStyle?.verticalAlign === 'bottom'
+        ? 'flex-end'
+        : 'center',
+    '--ultigrid-insight-cell-padding-inline': cssLength(visualStyle?.paddingInline, '10px'),
+    '--ultigrid-insight-cell-padding-block': cssLength(visualStyle?.paddingBlock, '6px'),
+  }
+}
+
+function cssLength(value: number | string | undefined, fallback: string): string {
+  if (value === undefined) return fallback
+  return typeof value === 'number' ? `${value}px` : value
 }
 
 function getFormatter<TRow>(

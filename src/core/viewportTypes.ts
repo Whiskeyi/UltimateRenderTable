@@ -115,7 +115,10 @@ export interface UltiGridViewportProps<TValue = CellPrimitive, TMeta = unknown> 
   frozen?: FrozenEdges
   overscan?: OverscanOptions
   autoSize?: boolean | AutoSizeOptions
-  /** Change to invalidate progressive measurement caches after external data swaps. */
+  /**
+   * Increment when data behind stable getters mutates in place. Invalidates
+   * memoized cell renders and progressive measurement caches.
+   */
   contentVersion?: string | number
   /** Distributes spare horizontal space across columns while content is narrower than the viewport. */
   fitColumns?: FitColumnsMode

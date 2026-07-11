@@ -418,8 +418,6 @@
   border-radius: 22px;
   background: #fff;
   box-shadow: var(--studio-shadow-soft), inset 0 1px rgba(255, 255, 255, 0.9);
-  -webkit-backdrop-filter: saturate(165%) blur(22px);
-  backdrop-filter: saturate(165%) blur(22px);
 }
 
 .studio-stage-shell:fullscreen {
@@ -622,11 +620,9 @@
   color: #eef4fa;
   border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: 18px;
-  background: rgba(25, 34, 45, 0.82);
+  background: #19222d;
   box-shadow: 0 24px 60px rgba(13, 23, 34, 0.24), inset 0 1px rgba(255, 255, 255, 0.12);
   font-family: var(--font-mono, monospace);
-  -webkit-backdrop-filter: saturate(150%) blur(24px);
-  backdrop-filter: saturate(150%) blur(24px);
   animation: studio-pop-in 180ms ease-out;
 }
 

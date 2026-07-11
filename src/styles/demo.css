@@ -91,8 +91,7 @@
 }
 
 .demo-report--scenario-analysis
-  .ultigrid-insight-surface--striped:not(.is-selected)
-  .ultigrid-insight-cell {
+  .ultigrid-insight-surface--striped:not(.is-selected) {
   background-color: #fafcfb;
 }
 
@@ -183,26 +182,18 @@
 }
 
 .demo-mini-chart {
-  display: flex;
   width: 72px;
   height: 22px;
-  align-items: flex-end;
-  gap: 2px;
-  padding-bottom: 1px;
-  border-bottom: 1px solid #dce7e0;
+  overflow: visible;
 }
 
-.demo-mini-chart i {
-  width: 6px;
-  min-height: 3px;
-  border-radius: 2px 2px 1px 1px;
-  background: #2a9a60;
-  opacity: 0.76;
-}
-
-.demo-mini-chart i:nth-child(3n) {
-  background: #177c4b;
-  opacity: 0.9;
+.demo-mini-chart polyline {
+  fill: none;
+  stroke: #238d58;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+  vector-effect: non-scaling-stroke;
 }
 
 /* Analysis tree mode: a neutral planning hierarchy with stronger depth cues. */
@@ -221,8 +212,7 @@
 }
 
 .demo-report--scenario-analysis.demo-report--tree-enabled
-  .ultigrid-insight-surface--striped:not(.is-selected)
-  .ultigrid-insight-cell {
+  .ultigrid-insight-surface--striped:not(.is-selected) {
   background-color: #f4f7f5;
 }
 
@@ -545,11 +535,13 @@
   white-space: nowrap;
 }
 
-.demo-report--compact .ultigrid-insight-cell__content-layer {
+.demo-report--compact .ultigrid-insight-cell__content-layer,
+.demo-report--compact .ultigrid-insight-surface--plain > .ultigrid-cell__content {
   --ultigrid-insight-cell-padding-inline: 8px;
 }
 
-.demo-report--relaxed .ultigrid-insight-cell__content-layer {
+.demo-report--relaxed .ultigrid-insight-cell__content-layer,
+.demo-report--relaxed .ultigrid-insight-surface--plain > .ultigrid-cell__content {
   --ultigrid-insight-cell-padding-inline: 13px;
 }
 

@@ -62,8 +62,6 @@
   overflow: hidden;
   background: #fff;
   contain: strict;
-  --ultigrid-scroll-x: 0px;
-  --ultigrid-scroll-y: 0px;
 }
 
 .ultigrid-pane {

@@ -83,17 +83,18 @@ See [Capability status](docs/CAPABILITIES.md) for detailed boundaries.
 
 ## Architecture and implementation
 
-The scroll hot path stays within the active viewport workload:
+The scroll hot path separates visual movement from React window updates:
 
 ```text
-scroll → requestAnimationFrame → Axis offset lookup → visible window
-       → pane composition → MergeIndex intersection query → React DOM
+scroll → requestAnimationFrame → exact visible window → direct pane transform
+                                  └─ exits retained guard
+                                     → replenish render window → MergeIndex query → React cells
 ```
 
 | Module | Implementation | Key cost |
 | --- | --- | --- |
 | `Axis` | Default size, sparse `Map`, `Float64Array` segment tree | Offset/index lookup `O(log N)` |
-| Virtualizer | Independent row and column windows with overscan | Window lookup `O(log Nᵣ + log N𝚌)` |
+| Virtualizer | Exact visible window plus a direction-aware retained window | Lookup `O(log Nᵣ + log N𝚌)`; no React cell regrouping inside the guard |
 | Frozen panes | start/middle/end bands per axis, up to nine clipped panes | DOM follows the window and effective frozen regions |
 | `MergeIndex` | Stable-id `Map` plus packed R-tree | Build about `O(M log M)`; typical query `O(log M + I)` |
 | Selection | One inclusive rectangle with independent anchor/focus | Resident state `O(1)` |
@@ -112,17 +113,19 @@ See [Architecture](docs/ARCHITECTURE.md) for the full data flow, DOM contract, a
 | Axis trees | `O(Nᵣ + N𝚌)` | Raw typed buffers for 100K rows and 100K columns total about 4 MiB |
 | Custom sizes | `O(Kᵣ + K𝚌)` | Sparse `ReadonlyMap`; only overrides are stored |
 | Merge index | `O(M)` | A range spanning many cells remains one rectangle |
-| DOM / React cells | `O(W)` | `W` includes viewport, overscan, frozen panes, and merge fragments |
+| DOM / React cells | `O(W)` | `W` is the retained-window, frozen-pane, and merge-fragment workset |
 | Insight working-set caches | Bounded | Up to 2,048 columns; 512 rows and 512 row metadata entries |
 | Copy and export | `O(A)` | The target range must be materialized and is guarded by limits |
 
 `100,000 × 100,000` describes logical addressing, not ten billion allocated values. The current implementation uses one native scroll coordinate space and remains subject to browser layout limits, scroll precision, and available memory. Frozen regions, overscan, auto-size measurement, and deep custom DOM all add main-thread work.
 
-At scale, keep getters, size maps, merge configuration, and renderers referentially stable; keep `getCell` / `getColumn` close to `O(1)`; use lazy columns for wide grids; and bound frozen regions, overscan, copy, and export ranges.
+At scale, keep getters, size maps, merge configuration, and renderers referentially stable; keep `getCell` / `getColumn` close to `O(1)`; use lazy columns for wide grids; and bound frozen regions, overscan, copy, and export ranges. When a mutable store behind a stable getter changes in place, increment `contentVersion` to invalidate cell-render and auto-measurement caches.
 
 ## Studio interaction layer
 
 Studio demonstrates how the two npm packages compose. It is not a production runtime dependency. It has four top-level tabs:
+
+Studio defaults to the Everyday preset: `1K × 40`, row/column overscan `2 / 1`, and automatic row sizing off. `100K × 100K` is an opt-in stress preset, not a fixed-FPS promise.
 
 | Tab | Content |
 | --- | --- |

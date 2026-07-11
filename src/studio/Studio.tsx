@@ -138,24 +138,45 @@ const SCENARIOS: ScenarioOption[] = [
   },
 ]
 
+const SCALE_PRESET_RUNTIME_DEFAULTS: Pick<
+  StudioTableConfig,
+  'overscanRows' | 'overscanColumns' | 'autoRowHeight'
+> = {
+  overscanRows: 2,
+  overscanColumns: 1,
+  autoRowHeight: false,
+}
+
 const SCALE_PRESETS: ScalePreset[] = [
   {
     id: 'everyday',
     labelKey: 'preset.everyday',
     detail: '1K × 40',
-    patch: { rowCount: 1_000, columnCount: 40 },
+    patch: {
+      rowCount: 1_000,
+      columnCount: 40,
+      ...SCALE_PRESET_RUNTIME_DEFAULTS,
+    },
   },
   {
     id: 'wide',
     labelKey: 'preset.wide',
     detail: '10K × 2K',
-    patch: { rowCount: 10_000, columnCount: 2_000 },
+    patch: {
+      rowCount: 10_000,
+      columnCount: 2_000,
+      ...SCALE_PRESET_RUNTIME_DEFAULTS,
+    },
   },
   {
     id: 'maximum',
     labelKey: 'preset.maximum',
     detail: '100K × 100K',
-    patch: { rowCount: 100_000, columnCount: 100_000 },
+    patch: {
+      rowCount: 100_000,
+      columnCount: 100_000,
+      ...SCALE_PRESET_RUNTIME_DEFAULTS,
+    },
   },
 ]
 
@@ -776,8 +797,7 @@ export function Studio<TConfig extends StudioTableConfig = StudioTableConfig>({
   const activePreset = SCALE_PRESETS.find(
     (preset) =>
       preset.patch.rowCount === config.rowCount &&
-      preset.patch.columnCount === config.columnCount &&
-      (preset.patch.scenario === undefined || preset.patch.scenario === config.scenario),
+      preset.patch.columnCount === config.columnCount,
   )
   const stageStatus = error
     ? t('studio.status.error')

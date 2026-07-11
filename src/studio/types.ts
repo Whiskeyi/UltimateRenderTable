@@ -83,12 +83,12 @@ export interface StudioProps<TConfig extends StudioTableConfig = StudioTableConf
 
 export const DEFAULT_STUDIO_CONFIG: StudioTableConfig = {
   scenario: 'analysis',
-  rowCount: 100_000,
-  columnCount: 100_000,
+  rowCount: 1_000,
+  columnCount: 40,
   rowHeight: 42,
   columnWidth: 136,
-  overscanRows: 6,
-  overscanColumns: 3,
+  overscanRows: 2,
+  overscanColumns: 1,
   frozenTopRows: 1,
   frozenBottomRows: 0,
   frozenLeftColumns: 2,
