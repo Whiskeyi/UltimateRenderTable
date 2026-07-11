@@ -2,7 +2,7 @@ import {
   Braces,
   Check,
   ChevronRight,
-  Code2,
+  Github,
   Keyboard,
   Layers3,
   MousePointer2,
@@ -13,24 +13,30 @@ import {
   useRef,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
-  type MouseEvent,
 } from 'react'
 import { useI18n } from '../i18n'
-import type { DemoSnippetKey } from './demoSnippets'
 import {
   GALLERY_EXAMPLES,
   type GalleryExampleId,
 } from './galleryExamples'
 
-export interface ComponentGalleryProps {
-  onViewSource: (
-    sourceKey: DemoSnippetKey,
-    title: string,
-    trigger: HTMLButtonElement,
-  ) => void
-}
+const GITHUB_GALLERY_SOURCE = 'https://github.com/Whiskeyi/UltimateRenderTable/blob/main/src/demo/galleryExamples.tsx'
 
-export function ComponentGallery({ onViewSource }: ComponentGalleryProps) {
+export const GALLERY_SOURCE_URLS = {
+  virtualization: `${GITHUB_GALLERY_SOURCE}#L167`,
+  frozen: `${GITHUB_GALLERY_SOURCE}#L188`,
+  sizing: `${GITHUB_GALLERY_SOURCE}#L225`,
+  selection: `${GITHUB_GALLERY_SOURCE}#L352`,
+  renderer: `${GITHUB_GALLERY_SOURCE}#L419`,
+  merging: `${GITHUB_GALLERY_SOURCE}#L281`,
+  tree: `${GITHUB_GALLERY_SOURCE}#L541`,
+  conditional: `${GITHUB_GALLERY_SOURCE}#L599`,
+  lazy: `${GITHUB_GALLERY_SOURCE}#L683`,
+  api: `${GITHUB_GALLERY_SOURCE}#L718`,
+  export: `${GITHUB_GALLERY_SOURCE}#L791`,
+} as const satisfies Record<GalleryExampleId, string>
+
+export function ComponentGallery() {
   const { locale, t } = useI18n()
   const [activeId, setActiveId] = useState<GalleryExampleId>('virtualization')
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([])
@@ -43,10 +49,6 @@ export function ComponentGallery({ onViewSource }: ComponentGalleryProps) {
     { level: 'basic', label: t('gallery.group.basic') },
     { level: 'advanced', label: t('gallery.group.advanced') },
   ] as const
-
-  const openSource = (event: MouseEvent<HTMLButtonElement>) => {
-    onViewSource(active.sourceKey, t(active.titleKey), event.currentTarget)
-  }
 
   const handleTabKeyDown = (
     event: ReactKeyboardEvent<HTMLButtonElement>,
@@ -129,6 +131,16 @@ export function ComponentGallery({ onViewSource }: ComponentGalleryProps) {
             <div><dt>{t('gallery.summary.examples')}</dt><dd>{GALLERY_EXAMPLES.length}</dd></div>
             <div><dt>{t('gallery.summary.packages')}</dt><dd><PackageOpen size={15} /> 2</dd></div>
           </dl>
+          <dl className="component-gallery__capabilities">
+            <div>
+              <dt>{t('gallery.group.basic')}</dt>
+              <dd>{t('gallery.capabilities.basic')}</dd>
+            </div>
+            <div>
+              <dt>{t('gallery.group.advanced')}</dt>
+              <dd>{t('gallery.capabilities.advanced')}</dd>
+            </div>
+          </dl>
         </section>
 
         <header className="component-gallery__stage-head">
@@ -137,14 +149,15 @@ export function ComponentGallery({ onViewSource }: ComponentGalleryProps) {
             <h3>{t(active.titleKey)}</h3>
             <p>{t(active.detailKey)}</p>
           </div>
-          <button
-            type="button"
+          <a
             className="component-gallery__source"
             data-testid={`gallery-source-${active.id}`}
-            onClick={openSource}
+            href={GALLERY_SOURCE_URLS[active.id]}
+            target="_blank"
+            rel="noopener noreferrer"
           >
-            <Code2 size={15} /> {t('gallery.source')}
-          </button>
+            <Github size={15} /> {t('gallery.source')}
+          </a>
         </header>
 
         <div className="component-gallery__preview" data-example={active.id}>

@@ -73,8 +73,8 @@ Install `@ultigrid/core` when you only need the coordinate protocol and direct c
 | Large-scale rendering | Independent row and column virtualization, coordinate-based access, viewport rendering, configurable overscan |
 | Layout | Freeze on all four edges, default/sparse/getter sizes, incremental visible-content measurement, container stretch, two-axis scrolling |
 | Merging | Core renders 2D rectangles; Insight uses `mergeAdjacent` for vertically consecutive equal values in configured columns; horizontal or arbitrary 2D merges use explicit `mergedCells` |
-| Cells | Text truncation, alignment, typography, color, images, icons, backgrounds, data bars, custom React components |
-| Interaction | Click and drag selection, Shift extension, arrow/Tab/Enter navigation, merge-aware movement, TSV copy |
+| Cells | Text truncation, alignment, typography, color, images, icons, backgrounds, data bars, custom React components, shared theme color |
+| Interaction | Click and drag selection, out-of-bounds auto-scroll, Shift extension, arrow/Tab/Enter navigation, merge-aware movement, TSV copy |
 | Data models | Row arrays, `LazyRowSource`, `FlatRowModel`, `TreeRowModel`, materialized columns, and lazy `columnCount + getColumn` columns |
 | Conditional formatting | Text, background, icons, two/three-color scales, signed data bars, priority, `stopIfTrue` |
 | Output and integration | `scrollToCell`, imperative selection/copy APIs, Excel, CSV, current-viewport PNG, data-coordinate callbacks, `localeText`, ARIA grid/treegrid |

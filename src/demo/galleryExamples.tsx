@@ -17,6 +17,7 @@ import {
   UltiGridViewport,
   type CellRange,
   type MergedCellRange,
+  type TableCell,
   type UltiGridViewportApi,
 } from '@ultigrid/core'
 import {
@@ -30,7 +31,6 @@ import {
   type UltiGridInsightApi,
 } from '@ultigrid/insight'
 import type { Locale, MessageKey, Translate } from '../i18n'
-import type { DemoSnippetKey } from './demoSnippets'
 
 interface GalleryExampleProps {
   locale: Locale
@@ -59,7 +59,6 @@ export interface GalleryExampleDefinition {
   titleKey: MessageKey
   detailKey: MessageKey
   hintKey: MessageKey
-  sourceKey: DemoSnippetKey
   component: GalleryExampleComponent
 }
 
@@ -71,7 +70,6 @@ export const GALLERY_EXAMPLES: readonly GalleryExampleDefinition[] = [
     titleKey: 'gallery.virtualization.title',
     detailKey: 'gallery.virtualization.detail',
     hintKey: 'gallery.virtualization.hint',
-    sourceKey: 'virtualization',
     component: VirtualizationExample,
   },
   {
@@ -81,7 +79,6 @@ export const GALLERY_EXAMPLES: readonly GalleryExampleDefinition[] = [
     titleKey: 'gallery.frozen.title',
     detailKey: 'gallery.frozen.detail',
     hintKey: 'gallery.frozen.hint',
-    sourceKey: 'frozen',
     component: FrozenExample,
   },
   {
@@ -91,7 +88,6 @@ export const GALLERY_EXAMPLES: readonly GalleryExampleDefinition[] = [
     titleKey: 'gallery.sizing.title',
     detailKey: 'gallery.sizing.detail',
     hintKey: 'gallery.sizing.hint',
-    sourceKey: 'sizing',
     component: SizingExample,
   },
   {
@@ -101,7 +97,6 @@ export const GALLERY_EXAMPLES: readonly GalleryExampleDefinition[] = [
     titleKey: 'gallery.selection.title',
     detailKey: 'gallery.selection.detail',
     hintKey: 'gallery.selection.hint',
-    sourceKey: 'selection',
     component: SelectionExample,
   },
   {
@@ -111,7 +106,6 @@ export const GALLERY_EXAMPLES: readonly GalleryExampleDefinition[] = [
     titleKey: 'gallery.renderer.title',
     detailKey: 'gallery.renderer.detail',
     hintKey: 'gallery.renderer.hint',
-    sourceKey: 'renderer',
     component: RendererExample,
   },
   {
@@ -121,7 +115,6 @@ export const GALLERY_EXAMPLES: readonly GalleryExampleDefinition[] = [
     titleKey: 'gallery.merging.title',
     detailKey: 'gallery.merging.detail',
     hintKey: 'gallery.merging.hint',
-    sourceKey: 'mergeAdjacent',
     component: MergingExample,
   },
   {
@@ -131,7 +124,6 @@ export const GALLERY_EXAMPLES: readonly GalleryExampleDefinition[] = [
     titleKey: 'gallery.tree.title',
     detailKey: 'gallery.tree.detail',
     hintKey: 'gallery.tree.hint',
-    sourceKey: 'tree',
     component: TreeExample,
   },
   {
@@ -141,7 +133,6 @@ export const GALLERY_EXAMPLES: readonly GalleryExampleDefinition[] = [
     titleKey: 'gallery.conditional.title',
     detailKey: 'gallery.conditional.detail',
     hintKey: 'gallery.conditional.hint',
-    sourceKey: 'conditionalMini',
     component: ConditionalExample,
   },
   {
@@ -151,7 +142,6 @@ export const GALLERY_EXAMPLES: readonly GalleryExampleDefinition[] = [
     titleKey: 'gallery.lazy.title',
     detailKey: 'gallery.lazy.detail',
     hintKey: 'gallery.lazy.hint',
-    sourceKey: 'lazyData',
     component: LazyDataExample,
   },
   {
@@ -161,7 +151,6 @@ export const GALLERY_EXAMPLES: readonly GalleryExampleDefinition[] = [
     titleKey: 'gallery.api.title',
     detailKey: 'gallery.api.detail',
     hintKey: 'gallery.api.hint',
-    sourceKey: 'imperativeApi',
     component: ImperativeApiExample,
   },
   {
@@ -171,13 +160,12 @@ export const GALLERY_EXAMPLES: readonly GalleryExampleDefinition[] = [
     titleKey: 'gallery.export.title',
     detailKey: 'gallery.export.detail',
     hintKey: 'gallery.export.hint',
-    sourceKey: 'exporting',
     component: ExportExample,
   },
 ]
 
 function VirtualizationExample({ t }: GalleryExampleProps) {
-  const getCell = useCallback((row: number, column: number) => ({
+  const getCell = useCallback((row: number, column: number): TableCell<number> => ({
     value: row * 100_000 + column,
     text: `${row.toLocaleString()} : ${column.toLocaleString()}`,
   }), [])
@@ -198,12 +186,16 @@ function VirtualizationExample({ t }: GalleryExampleProps) {
 }
 
 function FrozenExample({ t }: GalleryExampleProps) {
-  const getCell = useCallback((row: number, column: number) => ({
-    text: `${row + 1} / ${column + 1}`,
-    style: row === 0 || row === 199 || column === 0 || column === 59
-      ? { backgroundColor: '#edf6f0', color: '#176f49', fontWeight: 700 }
-      : undefined,
-  }), [])
+  const getCell = useCallback((row: number, column: number): TableCell<string> => {
+    const value = `${row + 1} / ${column + 1}`
+    return {
+      value,
+      text: value,
+      style: row === 0 || row === 199 || column === 0 || column === 59
+        ? { backgroundColor: '#edf6f0', color: '#176f49', fontWeight: 700 }
+        : undefined,
+    }
+  }, [])
 
   return (
     <UltiGridViewport
@@ -231,12 +223,16 @@ const GALLERY_COLUMN_WIDTHS = new Map<number, number>([
 ])
 
 function SizingExample({ t }: GalleryExampleProps) {
-  const getCell = useCallback((row: number, column: number) => ({
-    text: column === 0
+  const getCell = useCallback((row: number, column: number): TableCell<string> => {
+    const value = column === 0
       ? `${t('gallery.sizing.dimension', { index: Math.floor(row / 3) + 1 })}\n${t('gallery.sizing.measured')}`
-      : t('gallery.sizing.cell', { row: row + 1, column: column + 1 }),
-    style: column === 0 ? { whiteSpace: 'normal', lineHeight: 1.35 } : undefined,
-  }), [t])
+      : t('gallery.sizing.cell', { row: row + 1, column: column + 1 })
+    return {
+      value,
+      text: value,
+      style: column === 0 ? { whiteSpace: 'normal', lineHeight: 1.35 } : undefined,
+    }
+  }, [t])
 
   return (
     <UltiGridViewport
@@ -362,9 +358,10 @@ function SelectionExample({ t }: GalleryExampleProps) {
     columnEnd: 3,
   })
   const [copiedRows, setCopiedRows] = useState<number | null>(null)
-  const getCell = useCallback((row: number, column: number) => ({
-    text: t('gallery.selection.value', { row: row + 1, column: column + 1 }),
-  }), [t])
+  const getCell = useCallback(
+    (row: number, column: number) => t('gallery.selection.value', { row: row + 1, column: column + 1 }),
+    [t],
+  )
 
   const copy = useCallback(async () => {
     const value = await apiRef.current?.copySelection()
@@ -721,9 +718,10 @@ const API_SELECTION: CellRange = {
 function ImperativeApiExample({ t }: GalleryExampleProps) {
   const apiRef = useRef<UltiGridViewportApi | null>(null)
   const [selection, setSelection] = useState<CellRange | null>(null)
-  const getCell = useCallback((row: number, column: number) => ({
-    text: `${row + 1} · ${column + 1}`,
-  }), [])
+  const getCell = useCallback(
+    (row: number, column: number) => `${row + 1} · ${column + 1}`,
+    [],
+  )
 
   const jump = useCallback(() => {
     apiRef.current?.scrollToCell(API_JUMP_TARGET, 'center')

@@ -55,6 +55,7 @@ export function SalesTable() {
       columns={columns}
       frozen={{ left: 1 }}
       stripedRows
+      themeColor="#c2410c"
       style={{ height: 420 }}
     />
   )
@@ -72,6 +73,7 @@ export function SalesTable() {
 | Conditional formatting | Text, background, icon, two/three-color scale, signed data bar, priority, `stopIfTrue` |
 | Custom cells | Alignment, typography, colors, images, icons, background layer, `component`, `renderContent`, `exportValue` |
 | Layout and interaction | Core sizing, fit, four-edge freezing, selection, navigation, copy, viewport callbacks |
+| Theme | `themeColor` is shared with Core selection, focus, and tree interaction accents |
 | Localization | English defaults with partial `localeText` overrides; business content stays caller-controlled |
 
 Adjacent-value equality is application semantics: Insight derives vertical same-column ranges through `mergeAdjacent`, while Core only indexes and renders rectangles. Horizontal or arbitrary 2D ranges use explicit data-coordinate `mergedCells`.

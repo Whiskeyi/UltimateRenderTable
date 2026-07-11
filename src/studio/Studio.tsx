@@ -188,9 +188,20 @@ const BOOLEAN_FIELDS: readonly (keyof StudioTableConfig)[] = [
   'treeExpandedByDefault',
 ]
 
+const THEME_COLOR_PATTERN = /^#[0-9a-f]{6}$/i
+
 function formatCompactNumber(value: number | undefined, locale: Locale): string {
   if (value === undefined || !Number.isFinite(value)) return '—'
   return Intl.NumberFormat(locale, { notation: 'compact', maximumFractionDigits: 1 }).format(value)
+}
+
+function contrastTextColor(hex: string): '#17211c' | '#fff' {
+  const channels = [1, 3, 5].map((offset) => Number.parseInt(hex.slice(offset, offset + 2), 16) / 255)
+  const [red, green, blue] = channels.map((channel) => (
+    channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4
+  ))
+  const luminance = 0.2126 * red! + 0.7152 * green! + 0.0722 * blue!
+  return luminance > 0.179 ? '#17211c' : '#fff'
 }
 
 function serializeConfig(value: StudioTableConfig): string {
@@ -233,6 +244,9 @@ function normalizeConfig<TConfig extends StudioTableConfig>(
   for (const key of BOOLEAN_FIELDS) {
     if (typeof next[key] !== 'boolean') throw new Error(t('error.boolean', { key }))
   }
+  if (typeof next.themeColor !== 'string' || !THEME_COLOR_PATTERN.test(next.themeColor)) {
+    throw new Error(t('error.themeColor'))
+  }
   return next
 }
 
@@ -271,6 +285,60 @@ function Field({ label, hint, children }: FieldProps) {
       </span>
       {children}
     </label>
+  )
+}
+
+interface ColorFieldProps {
+  label: string
+  value: string
+  onChange: (value: string) => void
+}
+
+function ColorField({ label, value, onChange }: ColorFieldProps) {
+  const [draft, setDraft] = useState(value)
+
+  useEffect(() => setDraft(value), [value])
+
+  const commitDraft = () => {
+    if (!THEME_COLOR_PATTERN.test(draft)) {
+      setDraft(value)
+      return
+    }
+    const next = draft.toLowerCase()
+    setDraft(next)
+    if (next !== value) onChange(next)
+  }
+
+  return (
+    <Field label={label}>
+      <span className="studio-color-control">
+        <input
+          type="color"
+          aria-label={label}
+          value={value}
+          onChange={(event) => {
+            setDraft(event.target.value)
+            onChange(event.target.value)
+          }}
+        />
+        <input
+          type="text"
+          aria-label={`${label} HEX`}
+          value={draft}
+          maxLength={7}
+          spellCheck={false}
+          onChange={(event) => setDraft(event.target.value)}
+          onBlur={commitDraft}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') event.currentTarget.blur()
+            if (event.key === 'Escape') {
+              setDraft(value)
+              event.currentTarget.blur()
+            }
+          }}
+        />
+      </span>
+    </Field>
   )
 }
 
@@ -719,6 +787,9 @@ export function Studio<TConfig extends StudioTableConfig = StudioTableConfig>({
     .join(' ')
   const studioStyle = {
     '--studio-inspector-width': `${inspectorWidth}px`,
+    '--studio-accent': config.themeColor,
+    '--studio-accent-contrast': contrastTextColor(config.themeColor),
+    '--ultigrid-theme-color': config.themeColor,
   } as CSSProperties
 
   return (
@@ -1181,6 +1252,11 @@ export function Studio<TConfig extends StudioTableConfig = StudioTableConfig>({
               </ConfigSection>
 
               <ConfigSection icon={Sparkles} title={t('studio.section.presentation')} detail={t('studio.section.presentation.detail')} open={false}>
+                <ColorField
+                  label={t('studio.field.themeColor')}
+                  value={config.themeColor}
+                  onChange={(themeColor) => patchConfig({ themeColor } as Partial<TConfig>)}
+                />
                 <ToggleField label={t('studio.field.gridLines')} checked={config.showGridLines} onChange={(showGridLines) => patchConfig({ showGridLines } as Partial<TConfig>)} />
                 <ToggleField label={t('studio.field.striped')} checked={config.stripedRows} onChange={(stripedRows) => patchConfig({ stripedRows } as Partial<TConfig>)} />
                 <ToggleField label={t('studio.field.rowNumbers')} checked={config.showRowNumbers} onChange={(showRowNumbers) => patchConfig({ showRowNumbers } as Partial<TConfig>)} />

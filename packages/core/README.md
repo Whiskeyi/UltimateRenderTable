@@ -40,6 +40,7 @@ export function CoordinateGrid() {
       mergedCells={mergedCells}
       frozen={{ top: 1, left: 1 }}
       overscan={{ rows: 5, columns: 2 }}
+      themeColor="#c2410c"
       style={{ height: 520 }}
     />
   )
@@ -58,6 +59,7 @@ Coordinates are zero-based and range ends are inclusive. Keep getters, size maps
 | Rendering | `renderCell`, styles, classes, metadata, ARIA hooks |
 | Merging | explicit, non-overlapping `MergedCellRange` rectangles, including horizontal and arbitrary 2D ranges |
 | Interaction | controlled/uncontrolled selection, keyboard navigation, TSV copy |
+| Theme | `themeColor` controls selection and focus accents; CSS variables remain available for deeper styling |
 | Imperative API | scroll, selection, copy through `UltiGridViewportApi` / `ApiRef` |
 | Observation | `onViewportChange`, `ViewportSnapshot` |
 

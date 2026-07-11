@@ -16,8 +16,9 @@ UltiGrid 由 Studio 交互层、`@ultigrid/insight` 应用表格层和 `@ultigri
 | 内容自适应 | Available | 只渐进测量已渲染、非合并 cell，不做全表预扫描 |
 | 容器自适应 | Available | 少列可平分剩余宽度，多列使用原生横向滚动 |
 | 单元格渲染 | Available | 支持文本、class、style、ARIA、meta 和 React renderer |
-| 选择与导航 | Available | 点击、拖拽、Shift、方向键、Tab、Enter，感知合并区域 |
+| 选择与导航 | Available | 点击、拖拽、越界自动滚动、Shift、方向键、Tab、Enter，感知合并区域 |
 | TSV 复制 | Available | 默认最多物化 100,000 个单元格 |
+| 主题色 | Available | `themeColor` 统一选择与焦点强调色；深度样式仍可覆盖 CSS 变量 |
 | 命令式 API | Available | `scrollToCell`、`getSelection`、`copySelection`、`focus` |
 | 100K × 100K 逻辑坐标 | Partial | 不分配完整矩阵；仍受浏览器布局尺寸和滚动精度限制 |
 
@@ -42,7 +43,7 @@ UltiGrid 由 Studio 交互层、`@ultigrid/insight` 应用表格层和 `@ultigri
 | 组件展厅 | Available | 内含三层架构与关键能力简述；基础/进阶两组共 11 个可交互示例，覆盖惰性行列、多级树、命令式 API、Excel/CSV/PNG 导出，每项可查看源码 |
 | 经营分析 | Available | 根与分支均可展开，至少覆盖深度 0/1/2；树形和同列纵向合并可独立开启，合并按兄弟边界断开 |
 | 条件格式场景 | Available | 组合展示五类格式规则 |
-| Props / JSON 工作台 | Available | 可视 Props 实时提交；JSON 模式的草稿与应用动作分离；支持规模预设 |
+| Props / JSON 工作台 | Available | 可视 Props 实时提交；JSON 模式的草稿与应用动作分离；支持规模预设与主题色 |
 | 中英文、全屏、诊断 | Available | 性能 HUD 是页面 rAF 观测，不是标准 benchmark |
 
 Studio 不发布 npm，也不进入 Core 或 Insight 的运行时依赖。

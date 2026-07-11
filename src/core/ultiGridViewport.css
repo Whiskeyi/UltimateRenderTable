@@ -13,12 +13,12 @@
   contain: strict;
   isolation: isolate;
   --ultigrid-grid-line: #e7e9ed;
-  --ultigrid-selection: #23a35a;
-  --ultigrid-selection-soft: rgba(35, 163, 90, 0.09);
+  --ultigrid-selection: var(--ultigrid-theme-color, #23a35a);
+  --ultigrid-selection-soft: color-mix(in srgb, var(--ultigrid-theme-color, #23a35a) 9%, transparent);
 }
 
 .ultigrid-root:focus-visible {
-  box-shadow: 0 0 0 3px rgba(35, 163, 90, 0.16);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ultigrid-theme-color, #23a35a) 16%, transparent);
 }
 
 .ultigrid-scroller {

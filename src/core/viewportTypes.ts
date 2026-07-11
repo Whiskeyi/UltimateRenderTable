@@ -127,6 +127,8 @@ export interface UltiGridViewportProps<TValue = CellPrimitive, TMeta = unknown> 
   onCopy?: (range: CellRange, tsv: string) => void
   /** Safety ceiling for clipboard materialization. Defaults to 100,000 cells. */
   copyCellLimit?: number
+  /** Accent used by selection, focus, and other interactive grid states. */
+  themeColor?: string
   className?: string
   style?: CSSProperties
   ariaLabel?: string

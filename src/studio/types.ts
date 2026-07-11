@@ -30,6 +30,7 @@ export interface StudioTableConfig {
   showGridLines: boolean
   stripedRows: boolean
   showRowNumbers: boolean
+  themeColor: string
   treeEnabled: boolean
   mergeSameValueDimensions: boolean
   treeExpandedByDefault: boolean
@@ -98,6 +99,7 @@ export const DEFAULT_STUDIO_CONFIG: StudioTableConfig = {
   showGridLines: true,
   stripedRows: true,
   showRowNumbers: true,
+  themeColor: '#198754',
   treeEnabled: false,
   mergeSameValueDimensions: true,
   treeExpandedByDefault: true,

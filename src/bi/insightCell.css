@@ -104,7 +104,7 @@
   position: absolute;
   z-index: 3;
   inset: 0;
-  border: 1px solid #5b6cf9;
+  border: 1px solid var(--ultigrid-theme-color, #23a35a);
   pointer-events: none;
 }
 

@@ -185,6 +185,8 @@ export interface UltiGridInsightBaseProps<TRow> {
   /** Client-side materialization guard. Use a backend stream for larger exports. */
   exportCellLimit?: number
   apiRef?: ApiRef<UltiGridInsightApi>
+  /** Accent shared with the Core viewport selection and focus states. */
+  themeColor?: string
   className?: string
   style?: CSSProperties
   ariaLabel?: string
@@ -285,6 +287,7 @@ export function UltiGridInsight<TRow>(props: UltiGridInsightProps<TRow>) {
     iconResolver = defaultIconResolver,
     exportCellLimit = DEFAULT_EXPORT_CELL_LIMIT,
     apiRef,
+    themeColor,
     className,
     style,
     ariaLabel = 'UltiGrid Insight',
@@ -830,6 +833,7 @@ export function UltiGridInsight<TRow>(props: UltiGridInsightProps<TRow>) {
         onSelectionChange={handleSelectionChange}
         onViewportChange={handleViewportChange}
         apiRef={viewportApiRef}
+        themeColor={themeColor}
         ariaLabel={ariaLabel}
         ariaRole={treeColumnId ? 'treegrid' : 'grid'}
         emptyContent={emptyContent}

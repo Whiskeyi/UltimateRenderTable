@@ -11,6 +11,7 @@ import {
   type ReactNode,
 } from 'react'
 import { Axis } from './axis'
+import { getDragAutoScrollVelocity, resolveDragAddress } from './dragAutoScroll'
 import { MergeIndex, type MergeRegion } from './mergeIndex'
 import { rangeToTSV } from './selection'
 import { getVirtualRange } from './virtualizer'
@@ -106,6 +107,7 @@ export function UltiGridViewport<TValue = CellPrimitive, TMeta = unknown>(
     onViewportChange,
     onCopy,
     copyCellLimit = DEFAULT_COPY_LIMIT,
+    themeColor,
     className,
     style,
     ariaLabel = 'Virtual data grid',
@@ -118,7 +120,10 @@ export function UltiGridViewport<TValue = CellPrimitive, TMeta = unknown>(
   const scrollerRef = useRef<HTMLDivElement>(null)
   const viewportRef = useRef<HTMLDivElement>(null)
   const scrollRafRef = useRef<number | null>(null)
+  const dragAutoScrollRafRef = useRef<number | null>(null)
+  const dragAutoScrollCallbackRef = useRef<() => void>(() => undefined)
   const dragRef = useRef(false)
+  const dragPointerRef = useRef<{ x: number; y: number } | null>(null)
   const lastScrollRef = useRef({ top: 0, left: 0 })
   const measuredRowsRef = useRef(new Map<number, number>())
   const measuredColumnsRef = useRef(new Map<number, number>())
@@ -327,16 +332,6 @@ export function UltiGridViewport<TValue = CellPrimitive, TMeta = unknown>(
     if (scrollRafRef.current !== null) cancelAnimationFrame(scrollRafRef.current)
   }, [])
 
-  useEffect(() => {
-    const stopDragging = () => { dragRef.current = false }
-    window.addEventListener('pointerup', stopDragging)
-    window.addEventListener('pointercancel', stopDragging)
-    return () => {
-      window.removeEventListener('pointerup', stopDragging)
-      window.removeEventListener('pointercancel', stopDragging)
-    }
-  }, [])
-
   const commitSelection = useCallback((next: SelectionModel | null) => {
     const stableModel = next && rowCount > 0 && columnCount > 0 ? {
       anchor: clampAddress(next.anchor, rowCount, columnCount),
@@ -467,6 +462,7 @@ export function UltiGridViewport<TValue = CellPrimitive, TMeta = unknown>(
     event.preventDefault()
     rootRef.current?.focus({ preventScroll: true })
     dragRef.current = true
+    dragPointerRef.current = { x: event.clientX, y: event.clientY }
     if (event.shiftKey && selection) {
       commitSelection({
         anchor: selectionModelRef.current?.anchor
@@ -481,12 +477,109 @@ export function UltiGridViewport<TValue = CellPrimitive, TMeta = unknown>(
 
   const extendSelection = useCallback((address: CellAddress) => {
     if (!dragRef.current) return
+    if (
+      selectionModelRef.current?.focus.row === address.row &&
+      selectionModelRef.current.focus.column === address.column
+    ) return
     commitSelection({
-      anchor: selectionModelRef.current?.anchor
-        ?? { row: selection?.rowStart ?? address.row, column: selection?.columnStart ?? address.column },
+      anchor: selectionModelRef.current?.anchor ?? address,
       focus: address,
     })
-  }, [selection, commitSelection])
+  }, [commitSelection])
+
+  const updateDragSelection = useCallback((pointer: { x: number; y: number }) => {
+    const viewport = viewportRef.current
+    const scroller = scrollerRef.current
+    if (!viewport || !scroller) return
+    const rect = viewport.getBoundingClientRect()
+    const address = resolveDragAddress(
+      pointer,
+      { left: rect.left, top: rect.top, width: rect.width, height: rect.height },
+      {
+        scrollTop: scroller.scrollTop,
+        scrollLeft: scroller.scrollLeft,
+        topHeight: dimensions.topHeight,
+        bottomHeight: dimensions.bottomHeight,
+        bottomStartOffset: rowAxis.getOffset(dimensions.bottomStart),
+        leftWidth: dimensions.leftWidth,
+        rightWidth: dimensions.rightWidth,
+        rightStartOffset: columnAxis.getOffset(dimensions.rightStart),
+      },
+      rowAxis,
+      columnAxis,
+    )
+    if (!address) return
+    const merge = mergeIndex.getAt(address.row, address.column)
+    extendSelection(merge
+      ? { row: merge.rowStart, column: merge.columnStart }
+      : address)
+  }, [dimensions, rowAxis, columnAxis, mergeIndex, extendSelection])
+
+  const runDragAutoScroll = useCallback(() => {
+    dragAutoScrollRafRef.current = null
+    const pointer = dragPointerRef.current
+    const viewport = viewportRef.current
+    const scroller = scrollerRef.current
+    if (!dragRef.current || !pointer || !viewport || !scroller) return
+
+    const bounds = viewport.getBoundingClientRect()
+    const velocity = getDragAutoScrollVelocity(pointer, bounds)
+    if (velocity.x === 0 && velocity.y === 0) return
+
+    const previousTop = scroller.scrollTop
+    const previousLeft = scroller.scrollLeft
+    scroller.scrollTop += velocity.y
+    scroller.scrollLeft += velocity.x
+    const didScroll = scroller.scrollTop !== previousTop || scroller.scrollLeft !== previousLeft
+    if (!didScroll) {
+      updateDragSelection(pointer)
+      return
+    }
+
+    updateDragSelection(pointer)
+    dragAutoScrollRafRef.current = requestAnimationFrame(dragAutoScrollCallbackRef.current)
+  }, [updateDragSelection])
+
+  useLayoutEffect(() => {
+    dragAutoScrollCallbackRef.current = runDragAutoScroll
+  }, [runDragAutoScroll])
+
+  const stopDragging = useCallback(() => {
+    dragRef.current = false
+    dragPointerRef.current = null
+    if (dragAutoScrollRafRef.current !== null) {
+      cancelAnimationFrame(dragAutoScrollRafRef.current)
+      dragAutoScrollRafRef.current = null
+    }
+  }, [])
+
+  useEffect(() => {
+    const trackPointer = (event: PointerEvent) => {
+      if (!dragRef.current) return
+      if (event.buttons === 0) {
+        stopDragging()
+        return
+      }
+      const pointer = { x: event.clientX, y: event.clientY }
+      dragPointerRef.current = pointer
+      updateDragSelection(pointer)
+      if (dragAutoScrollRafRef.current === null) {
+        dragAutoScrollRafRef.current = requestAnimationFrame(runDragAutoScroll)
+      }
+    }
+    window.addEventListener('pointermove', trackPointer)
+    window.addEventListener('pointerup', stopDragging)
+    window.addEventListener('pointercancel', stopDragging)
+    window.addEventListener('blur', stopDragging)
+    return () => {
+      window.removeEventListener('pointermove', trackPointer)
+      window.removeEventListener('pointerup', stopDragging)
+      window.removeEventListener('pointercancel', stopDragging)
+      window.removeEventListener('blur', stopDragging)
+    }
+  }, [runDragAutoScroll, stopDragging, updateDragSelection])
+
+  useEffect(() => () => stopDragging(), [stopDragging])
 
   const handleKeyDown = useCallback((event: ReactKeyboardEvent<HTMLDivElement>) => {
     if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'c') {
@@ -812,6 +905,12 @@ export function UltiGridViewport<TValue = CellPrimitive, TMeta = unknown>(
   }
 
   const rootClassName = ['ultigrid-root', className].filter(Boolean).join(' ')
+  const rootStyle = useMemo(
+    () => themeColor
+      ? ({ ...style, '--ultigrid-theme-color': themeColor } as CSSProperties)
+      : style,
+    [style, themeColor],
+  )
   const canvasWidth = Math.max(size.width, columnAxis.totalSize)
   const canvasHeight = Math.max(size.height, rowAxis.totalSize)
   const isEmpty = rowCount === 0 || columnCount === 0
@@ -820,7 +919,7 @@ export function UltiGridViewport<TValue = CellPrimitive, TMeta = unknown>(
     <div
       ref={rootRef}
       className={rootClassName}
-      style={style}
+      style={rootStyle}
       role={ariaRole}
       aria-label={ariaLabel}
       aria-rowcount={rowCount}

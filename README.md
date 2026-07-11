@@ -73,8 +73,8 @@ export function RevenueTable() {
 | 大规模渲染 | 行列双轴虚拟化、按坐标取值、可见范围实时渲染、可配置 overscan |
 | 布局 | 上下左右固定、默认/稀疏/函数式行列尺寸、可见内容渐进测量、容器平铺与双向滚动 |
 | 合并 | Core 渲染二维矩形；Insight 通过 `mergeAdjacent` 合并配置列中纵向连续的相同维度值；横向或任意二维合并使用显式 `mergedCells` |
-| 单元格 | 文本截断、对齐、字体、颜色、图片、图标、背景、数据条、自定义 React 组件 |
-| 交互 | 点击与拖拽选择、Shift 扩展、方向键/Tab/Enter 导航、合并区域感知、TSV 复制 |
+| 单元格 | 文本截断、对齐、字体、颜色、图片、图标、背景、数据条、自定义 React 组件、统一主题色 |
+| 交互 | 点击与拖拽选择、越界自动滚动、Shift 扩展、方向键/Tab/Enter 导航、合并区域感知、TSV 复制 |
 | 数据模型 | 行数组、`LazyRowSource`、`FlatRowModel`、`TreeRowModel`、列数组与 `columnCount + getColumn` 惰性列 |
 | 条件格式 | 文本、背景、图标、二/三色阶、正负数据条、优先级与 `stopIfTrue` |
 | 输出与集成 | `scrollToCell`、选区/复制命令式 API，Excel、CSV、当前视口 PNG，数据坐标回调、`localeText`、ARIA grid/treegrid |

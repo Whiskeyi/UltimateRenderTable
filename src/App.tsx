@@ -1,7 +1,6 @@
 import {
   Check,
-  Code2,
-  Copy,
+  Github,
   RefreshCw,
   X,
 } from 'lucide-react'
@@ -31,17 +30,11 @@ import {
 } from './studio'
 import { ComponentGallery } from './demo/ComponentGallery'
 import {
-  demoSnippets,
-  scenarioSnippetKeys,
-  type DemoSnippetKey,
-} from './demo/demoSnippets'
-import {
   createDemoColumnGetter,
   createDemoRowSource,
   getDemoColumnWidths,
 } from './demo/demoData'
 import { translate, useI18n, type Locale, type MessageKey } from './i18n'
-import { writeTextToClipboard } from './utils/clipboard'
 import './styles/demo.css'
 
 const ANALYSIS_MERGE_OPTIONS = { columns: [0, 1] } as const
@@ -50,11 +43,6 @@ const ANALYSIS_SINGLE_COLUMN_MERGE_OPTIONS = { columns: [0] } as const
 interface ToastState {
   tone: 'success' | 'error'
   message: string
-}
-
-interface SourceView {
-  key: DemoSnippetKey
-  title: string
 }
 
 class DemoStageErrorBoundary extends Component<
@@ -100,13 +88,7 @@ export function App() {
   })
   const [metrics, setMetrics] = useState<StudioPerformanceMetrics>({})
   const [toast, setToast] = useState<ToastState | null>(null)
-  const [sourceView, setSourceView] = useState<SourceView | null>(null)
-  const [codeCopied, setCodeCopied] = useState(false)
   const toastTimerRef = useRef<number | null>(null)
-  const codeCopyTimerRef = useRef<number | null>(null)
-  const sourceTriggerRef = useRef<HTMLButtonElement | null>(null)
-  const codeCloseRef = useRef<HTMLButtonElement>(null)
-  const codePanelRef = useRef<HTMLElement>(null)
 
   const showToast = useCallback((next: ToastState) => {
     setToast(next)
@@ -116,38 +98,7 @@ export function App() {
 
   useEffect(() => () => {
     if (toastTimerRef.current !== null) window.clearTimeout(toastTimerRef.current)
-    if (codeCopyTimerRef.current !== null) window.clearTimeout(codeCopyTimerRef.current)
   }, [])
-
-  useEffect(() => {
-    if (!sourceView) return
-    const onKeyDown = (event: globalThis.KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        setSourceView(null)
-        requestAnimationFrame(() => sourceTriggerRef.current?.focus())
-        return
-      }
-      if (event.key !== 'Tab') return
-      const focusable = Array.from(codePanelRef.current?.querySelectorAll<HTMLElement>(
-        'button:not([disabled]), [href], [tabindex]:not([tabindex="-1"])',
-      ) ?? [])
-      if (focusable.length === 0) return
-      const first = focusable[0]!
-      const last = focusable[focusable.length - 1]!
-      if (event.shiftKey && (document.activeElement === first || !codePanelRef.current?.contains(document.activeElement))) {
-        event.preventDefault()
-        last.focus()
-      } else if (!event.shiftKey && (document.activeElement === last || !codePanelRef.current?.contains(document.activeElement))) {
-        event.preventDefault()
-        first.focus()
-      }
-    }
-    window.addEventListener('keydown', onKeyDown)
-    requestAnimationFrame(() => codeCloseRef.current?.focus())
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [sourceView])
-
-  useEffect(() => setCodeCopied(false), [sourceView?.key])
 
   useEffect(() => {
     let frame = 0
@@ -279,18 +230,9 @@ export function App() {
     exportRangeTooLarge: (count, limit) => t('table.exportTooLarge', { count, limit }),
   }), [t])
 
-  const openSource = useCallback((
-    key: DemoSnippetKey,
-    title: string,
-    trigger: HTMLButtonElement,
-  ) => {
-    sourceTriggerRef.current = trigger
-    setSourceView({ key, title })
-  }, [])
-
   const renderStage = useCallback(({ config: stageConfig }: { config: StudioTableConfig }) => {
     if (stageConfig.scenario === 'gallery') {
-      return <ComponentGallery onViewSource={openSource} />
+      return <ComponentGallery />
     }
     return (
       <DemoStageErrorBoundary
@@ -307,26 +249,7 @@ export function App() {
         />
       </DemoStageErrorBoundary>
     )
-  }, [handleViewport, locale, localeText, openSource, t])
-
-  const closeCode = useCallback(() => {
-    setSourceView(null)
-    requestAnimationFrame(() => sourceTriggerRef.current?.focus())
-  }, [])
-
-  const copyCode = useCallback(async () => {
-    if (!sourceView) return
-    try {
-      await writeTextToClipboard(demoSnippets[sourceView.key])
-      setCodeCopied(true)
-      if (codeCopyTimerRef.current !== null) window.clearTimeout(codeCopyTimerRef.current)
-      codeCopyTimerRef.current = window.setTimeout(() => setCodeCopied(false), 1_400)
-    } catch {
-      showToast({ tone: 'error', message: t('error.copy') })
-    }
-  }, [showToast, sourceView, t])
-
-  const scenarioLabel = t(`scenario.${config.scenario}` as MessageKey)
+  }, [handleViewport, locale, localeText, t])
 
   return (
     <>
@@ -338,20 +261,17 @@ export function App() {
         renderStage={renderStage}
         onExport={(format, config) => handleExport(format, config)}
         toolbarActions={(
-          <button
-            type="button"
-            className="studio-action-button demo-code-trigger"
-            data-testid="demo-code-trigger"
-            aria-label={t('demo.code.open')}
-            onClick={(event) => openSource(
-              scenarioSnippetKeys[config.scenario],
-              scenarioLabel,
-              event.currentTarget,
-            )}
+          <a
+            className="studio-action-button demo-github-link"
+            data-testid="github-repository-link"
+            href="https://github.com/Whiskeyi/UltimateRenderTable"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label={t('app.github.open')}
           >
-            <Code2 size={16} />
-            <span>{t('demo.code.open')}</span>
-          </button>
+            <Github size={16} />
+            <span>GitHub</span>
+          </a>
         )}
       />
       {toast ? (
@@ -362,50 +282,6 @@ export function App() {
           <span>{toast.tone === 'success' ? <Check size={15} /> : <X size={15} />}</span>
           <p>{toast.message}</p>
           <button type="button" aria-label={t('app.toast.close')} onClick={() => setToast(null)}><X size={13} /></button>
-        </div>
-      ) : null}
-      {sourceView ? (
-        <div
-          className="demo-code-backdrop"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget) closeCode()
-          }}
-        >
-          <section
-            ref={codePanelRef}
-            className="demo-code-panel"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="demo-code-title"
-          >
-            <header className="demo-code-head">
-              <div>
-                <span><Code2 size={16} /> TSX</span>
-                <h2 id="demo-code-title">{t('demo.code.title', { scenario: sourceView.title })}</h2>
-                <p>{t('demo.code.subtitle')}</p>
-              </div>
-              <div>
-                <button type="button" className="demo-code-copy" onClick={() => void copyCode()}>
-                  {codeCopied ? <Check size={15} /> : <Copy size={15} />}
-                  {codeCopied ? t('demo.code.copied') : t('demo.code.copy')}
-                </button>
-                <button
-                  ref={codeCloseRef}
-                  type="button"
-                  className="demo-code-close"
-                  aria-label={t('demo.code.close')}
-                  onClick={closeCode}
-                >
-                  <X size={17} />
-                </button>
-              </div>
-            </header>
-            <div className="demo-code-packages" aria-hidden="true">
-              <span>@ultigrid/core</span>
-              <span>@ultigrid/insight</span>
-            </div>
-            <pre tabIndex={0}><code>{demoSnippets[sourceView.key]}</code></pre>
-          </section>
         </div>
       ) : null}
     </>
@@ -489,6 +365,7 @@ const DemoTableStage = memo(function DemoTableStage({
           onToggleRow={toggleRow}
           onViewportChange={onViewportChange}
           apiRef={tableApiRef}
+          themeColor={config.themeColor}
           emptyContent={translate(locale, 'table.empty')}
           localeText={localeText}
           ariaLabel={`UltiGrid Insight · ${translate(locale, `scenario.${config.scenario}` as MessageKey)}`}
