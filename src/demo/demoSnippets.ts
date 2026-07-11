@@ -1,16 +1,6 @@
 import type { StudioScenario } from '../studio'
 
 export const demoSnippets = {
-  capabilities: String.raw`import { UltiGridViewport } from '@ultigrid/core'
-import { UltiGridInsight } from '@ultigrid/insight'
-
-// Studio demonstrates both public layers; it is not an npm package.
-export const layers = {
-  studio: 'interactive demos and live props',
-  insight: UltiGridInsight,
-  core: UltiGridViewport,
-}`,
-
   gallery: String.raw`import { UltiGridViewport } from '@ultigrid/core'
 import { UltiGridInsight } from '@ultigrid/insight'
 
@@ -185,15 +175,32 @@ export function CustomCellTable({ rows }) {
   return <UltiGridInsight rows={rows} columns={columns} />
 }`,
 
-  tree: String.raw`import { UltiGridInsight } from '@ultigrid/insight'
+  tree: String.raw`import { useMemo } from 'react'
+import { TreeRowModel, UltiGridInsight } from '@ultigrid/insight'
 
-export function TreeTable({ rowSource, onToggleRow }) {
+type Node = { id: string; label: string; children?: Node[] }
+
+const roots: Node[] = [{
+  id: 'root', label: 'Root', children: [{
+    id: 'branch', label: 'Branch', children: [
+      { id: 'leaf', label: 'Leaf' },
+    ],
+  }],
+}]
+
+export function TreeTable() {
+  const model = useMemo(() => new TreeRowModel(roots, {
+    getRowId: (row) => row.id,
+    hasChildren: (row) => Boolean(row.children?.length),
+    getChildren: (row) => row.children,
+    defaultExpanded: (_row, depth) => depth < 2,
+  }), [])
   return (
     <UltiGridInsight
-      rowSource={rowSource}
-      columns={columns}
+      rowModel={model}
+      columns={[{ id: 'name', header: 'Name', getValue: (row) => row.label }]}
       treeColumnId="name"
-      onToggleRow={onToggleRow}
+      onToggleRow={(rowId) => { void model.toggle(rowId) }}
       ariaLabel="Hierarchy table"
     />
   )
@@ -216,12 +223,98 @@ const columns = [{
 export function SignalTable({ rows }) {
   return <UltiGridInsight rows={rows} columns={columns} />
 }`,
+
+  lazyData: String.raw`import {
+  UltiGridInsight,
+  type InsightColumn,
+  type LazyRowSource,
+} from '@ultigrid/insight'
+
+const rowSource: LazyRowSource<{ id: number }> = {
+  rowCount: 100_000,
+  getRow: (index) => ({ id: index }),
+  getRowId: (row) => row.id,
+}
+
+const getColumn = (column: number): InsightColumn<{ id: number }, number> => ({
+  id: 'metric-' + column,
+  header: 'Metric ' + (column + 1),
+  getValue: (row) => ((row.id + 1) * (column + 17)) % 100_000,
+})
+
+export function LazyDataGrid() {
+  return (
+    <UltiGridInsight
+      rowSource={rowSource}
+      columnCount={10_000}
+      getColumn={getColumn}
+      fitColumns="none"
+      style={{ height: 420 }}
+    />
+  )
+}`,
+
+  imperativeApi: String.raw`import { useRef, useState } from 'react'
+import {
+  UltiGridViewport,
+  type CellRange,
+  type UltiGridViewportApi,
+} from '@ultigrid/core'
+
+export function ImperativeGrid() {
+  const apiRef = useRef<UltiGridViewportApi | null>(null)
+  const [selection, setSelection] = useState<CellRange | null>(null)
+  const selectRange = () => {
+    const range = { rowStart: 1200, rowEnd: 1204, columnStart: 40, columnEnd: 44 }
+    setSelection(range)
+    apiRef.current?.scrollToCell({ row: range.rowStart, column: range.columnStart }, 'center')
+    apiRef.current?.focus()
+  }
+
+  return (
+    <>
+      <button onClick={() => apiRef.current?.scrollToCell({ row: 24000, column: 240 }, 'center')}>
+        Jump
+      </button>
+      <button onClick={selectRange}>Select range</button>
+      <UltiGridViewport
+        rowCount={50_000}
+        columnCount={500}
+        getCell={(row, column) => ({ text: row + ':' + column })}
+        selection={selection}
+        onSelectionChange={setSelection}
+        apiRef={apiRef}
+      />
+    </>
+  )
+}`,
+
+  exporting: String.raw`import { useRef } from 'react'
+import { UltiGridInsight, type UltiGridInsightApi } from '@ultigrid/insight'
+
+const range = { rowStart: 0, rowEnd: 23, columnStart: 0, columnEnd: 3 }
+
+export function ExportableGrid({ rows, columns }) {
+  const apiRef = useRef<UltiGridInsightApi | null>(null)
+  return (
+    <>
+      <button onClick={() => void apiRef.current?.exportExcel('report', range)}>Excel</button>
+      <button onClick={() => apiRef.current?.exportCsv('report.csv', range)}>CSV</button>
+      <button onClick={() => void apiRef.current?.exportImage('report')}>PNG</button>
+      <UltiGridInsight
+        rows={rows.slice(0, 24)}
+        columns={columns.slice(0, 4)}
+        apiRef={apiRef}
+        exportCellLimit={500}
+      />
+    </>
+  )
+}`,
 } as const
 
 export type DemoSnippetKey = keyof typeof demoSnippets
 
 export const scenarioSnippetKeys: Record<StudioScenario, DemoSnippetKey> = {
-  capabilities: 'capabilities',
   gallery: 'gallery',
   analysis: 'analysis',
   conditional: 'conditional',

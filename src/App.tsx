@@ -29,7 +29,6 @@ import {
   type StudioPerformanceMetrics,
   type StudioTableConfig,
 } from './studio'
-import { CapabilityOverview } from './demo/CapabilityOverview'
 import { ComponentGallery } from './demo/ComponentGallery'
 import {
   demoSnippets,
@@ -290,9 +289,6 @@ export function App() {
   }, [])
 
   const renderStage = useCallback(({ config: stageConfig }: { config: StudioTableConfig }) => {
-    if (stageConfig.scenario === 'capabilities') {
-      return <CapabilityOverview locale={locale} />
-    }
     if (stageConfig.scenario === 'gallery') {
       return <ComponentGallery onViewSource={openSource} />
     }

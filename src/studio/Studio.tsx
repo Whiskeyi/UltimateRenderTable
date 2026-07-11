@@ -64,7 +64,7 @@ type InspectorTab = 'props' | 'json'
 
 interface ScenarioOption {
   value: StudioScenario
-  kind: 'overview' | 'gallery' | 'table'
+  kind: 'gallery' | 'table'
   labelKey: MessageKey
   detailKey: MessageKey
   icon: typeof LayoutDashboard
@@ -79,19 +79,6 @@ interface ScalePreset {
 }
 
 const SCENARIOS: ScenarioOption[] = [
-  {
-    value: 'capabilities',
-    kind: 'overview',
-    labelKey: 'scenario.capabilities',
-    detailKey: 'scenario.capabilities.detail',
-    icon: Layers3,
-    patch: {
-      scenario: 'capabilities',
-      showGridLines: false,
-      stripedRows: false,
-      showRowNumbers: false,
-    },
-  },
   {
     value: 'gallery',
     kind: 'gallery',
@@ -220,7 +207,7 @@ function normalizeConfig<TConfig extends StudioTableConfig>(
   }
 
   const next = { ...current, ...(candidate as Partial<TConfig>) }
-  const scenarios: StudioScenario[] = ['capabilities', 'gallery', 'analysis', 'conditional']
+  const scenarios: StudioScenario[] = ['gallery', 'analysis', 'conditional']
   const densities: StudioDensity[] = ['compact', 'comfortable', 'relaxed']
 
   if (!scenarios.includes(next.scenario)) {

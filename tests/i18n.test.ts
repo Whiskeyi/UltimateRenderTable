@@ -5,6 +5,10 @@ describe('translate', () => {
   it('returns Chinese and English messages from the selected locale', () => {
     expect(translate('zh-CN', 'scenario.gallery')).toBe('组件展厅')
     expect(translate('en-US', 'scenario.gallery')).toBe('Component gallery')
+    expect(translate('zh-CN', 'gallery.group.advanced')).toBe('进阶能力')
+    expect(translate('en-US', 'gallery.tree.title')).toBe('Multi-level tree row model')
+    expect(translate('zh-CN', 'gallery.lazy.title')).toBe('惰性行列数据')
+    expect(translate('en-US', 'gallery.export.title')).toBe('Excel, CSV, and image')
     expect(translate('zh-CN', 'studio.field.treeEnabled')).toBe('树形展示')
     expect(translate('en-US', 'studio.field.mergeSameValueDimensions')).toBe('Merge matching dimensions')
   })

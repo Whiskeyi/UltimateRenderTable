@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 
-export type StudioScenario = 'capabilities' | 'gallery' | 'analysis' | 'conditional'
+export type StudioScenario = 'gallery' | 'analysis' | 'conditional'
 
 export type StudioDensity = 'compact' | 'comfortable' | 'relaxed'
 

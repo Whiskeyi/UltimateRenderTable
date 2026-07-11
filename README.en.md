@@ -75,9 +75,9 @@ Install `@ultigrid/core` when you only need the coordinate protocol and direct c
 | Merging | Core renders 2D rectangles; Insight uses `mergeAdjacent` for vertically consecutive equal values in configured columns; horizontal or arbitrary 2D merges use explicit `mergedCells` |
 | Cells | Text truncation, alignment, typography, color, images, icons, backgrounds, data bars, custom React components |
 | Interaction | Click and drag selection, Shift extension, arrow/Tab/Enter navigation, merge-aware movement, TSV copy |
-| Data models | Arrays, `LazyRowSource`, `FlatRowModel`, `TreeRowModel`, materialized columns, lazy columns |
+| Data models | Row arrays, `LazyRowSource`, `FlatRowModel`, `TreeRowModel`, materialized columns, and lazy `columnCount + getColumn` columns |
 | Conditional formatting | Text, background, icons, two/three-color scales, signed data bars, priority, `stopIfTrue` |
-| Output and integration | Excel, CSV, current-viewport image, imperative API, data-coordinate callbacks, `localeText`, ARIA grid/treegrid |
+| Output and integration | `scrollToCell`, imperative selection/copy APIs, Excel, CSV, current-viewport PNG, data-coordinate callbacks, `localeText`, ARIA grid/treegrid |
 
 See [Capability status](docs/CAPABILITIES.md) for detailed boundaries.
 
@@ -122,13 +122,12 @@ At scale, keep getters, size maps, merge configuration, and renderers referentia
 
 ## Studio interaction layer
 
-Studio demonstrates how the two npm packages compose. It is not a production runtime dependency.
+Studio demonstrates how the two npm packages compose. It is not a production runtime dependency. It has three top-level tabs:
 
 | Tab | Content |
 | --- | --- |
-| Capability overview | Responsibilities, public packages, and supported boundaries |
-| Component gallery | Small interactive grids for freezing, sizing, selection, copy, merging, and custom rendering; every example exposes its source |
-| Business analytics | Composite dimensions and metrics; tree mode and vertical same-column adjacent merging are independent switches, with merge runs split at sibling boundaries when both are enabled |
+| Component gallery | Includes the three-layer architecture and key-capability summary; 11 interactive examples are grouped into Basic and Advanced, covering lazy rows/columns, multi-level trees, imperative APIs, and Excel/CSV/PNG export, each with source |
+| Business analytics | Composite dimensions and metrics; roots and branches both expand across at least depths 0/1/2; same-column merging is independent and splits at sibling boundaries |
 | Conditional formatting | Combined text, background, icon, color-scale, and data-bar rules |
 
 Every grid scenario can display and copy TSX that imports the public npm entry points. The right-hand workbench provides visual Props, JSON, scale presets, and performance observations; Chinese and English can be switched immediately.

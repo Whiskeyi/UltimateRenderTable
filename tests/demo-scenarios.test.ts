@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { renderToStaticMarkup } from 'react-dom/server'
 import { createDemoColumnGetter } from '../src/demo/demoData'
 
 const SCENARIOS = ['analysis', 'conditional'] as const
@@ -47,6 +48,29 @@ describe('demo scenario columns', () => {
       'node-type',
       'owner',
     ])
+  })
+
+  it('renders collapsed tree rows from their logical index', () => {
+    const getColumn = createDemoColumnGetter('analysis', 'en-US', { treeEnabled: true })
+    const dimension = getColumn(0)
+    const row = { id: 13, index: 13 }
+    const value = dimension.getValue(row, 8)
+    const content = dimension.renderContent?.({
+      row,
+      rowId: row.id,
+      rowIndex: 8,
+      columnId: dimension.id,
+      columnIndex: 0,
+      value,
+      displayValue: String(value),
+      selected: false,
+      active: false,
+    })
+    const markup = renderToStaticMarkup(content)
+
+    expect(markup).toContain('demo-tree-node--depth-1')
+    expect(markup).toContain('<i>P</i>')
+    expect(markup).toContain('<small>Partners</small>')
   })
 
   it('groups flat analysis dimensions into contiguous runs', () => {

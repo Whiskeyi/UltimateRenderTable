@@ -4,7 +4,9 @@ import {
   ChevronRight,
   Code2,
   Keyboard,
+  Layers3,
   MousePointer2,
+  PackageOpen,
 } from 'lucide-react'
 import {
   useMemo,
@@ -37,6 +39,10 @@ export function ComponentGallery({ onViewSource }: ComponentGalleryProps) {
     [activeId],
   )
   const Example = active.component
+  const groups = [
+    { level: 'basic', label: t('gallery.group.basic') },
+    { level: 'advanced', label: t('gallery.group.advanced') },
+  ] as const
 
   const openSource = (event: MouseEvent<HTMLButtonElement>) => {
     onViewSource(active.sourceKey, t(active.titleKey), event.currentTarget)
@@ -71,27 +77,32 @@ export function ComponentGallery({ onViewSource }: ComponentGalleryProps) {
           <p>{t('gallery.intro')}</p>
         </header>
         <div className="component-gallery__tabs" role="tablist" aria-label={t('gallery.title')}>
-          {GALLERY_EXAMPLES.map((example, index) => (
-            <button
-              key={example.id}
-              type="button"
-              role="tab"
-              id={`component-gallery-tab-${example.id}`}
-              aria-controls="component-gallery-panel"
-              aria-selected={example.id === active.id}
-              tabIndex={example.id === active.id ? 0 : -1}
-              className={example.id === active.id ? 'is-active' : undefined}
-              ref={(element) => { tabRefs.current[index] = element }}
-              onClick={() => setActiveId(example.id)}
-              onKeyDown={(event) => handleTabKeyDown(event, index)}
-            >
-              <i>{String(index + 1).padStart(2, '0')}</i>
-              <span>
-                <strong>{t(example.titleKey)}</strong>
-                <small>{example.packageName}</small>
-              </span>
-              <ChevronRight size={14} />
-            </button>
+          {groups.map((group) => (
+            <section className="component-gallery__group" role="presentation" key={group.level}>
+              <h3>{group.label}</h3>
+              {GALLERY_EXAMPLES.map((example, index) => example.level === group.level ? (
+                <button
+                  key={example.id}
+                  type="button"
+                  role="tab"
+                  id={`component-gallery-tab-${example.id}`}
+                  aria-controls="component-gallery-panel"
+                  aria-selected={example.id === active.id}
+                  tabIndex={example.id === active.id ? 0 : -1}
+                  className={example.id === active.id ? 'is-active' : undefined}
+                  ref={(element) => { tabRefs.current[index] = element }}
+                  onClick={() => setActiveId(example.id)}
+                  onKeyDown={(event) => handleTabKeyDown(event, index)}
+                >
+                  <i>{String(index + 1).padStart(2, '0')}</i>
+                  <span>
+                    <strong>{t(example.titleKey)}</strong>
+                    <small>{example.packageName}</small>
+                  </span>
+                  <ChevronRight size={14} />
+                </button>
+              ) : null)}
+            </section>
           ))}
         </div>
       </aside>
@@ -102,6 +113,24 @@ export function ComponentGallery({ onViewSource }: ComponentGalleryProps) {
         role="tabpanel"
         aria-labelledby={`component-gallery-tab-${active.id}`}
       >
+        <section className="component-gallery__overview" aria-label={t('gallery.summary.title')}>
+          <div className="component-gallery__overview-copy">
+            <span><Layers3 size={14} /> {t('gallery.summary.eyebrow')}</span>
+            <strong>{t('gallery.summary.title')}</strong>
+            <p>{t('gallery.summary.detail')}</p>
+          </div>
+          <ol className="component-gallery__layers">
+            <li><span>Studio</span><small>{t('gallery.summary.studio')}</small></li>
+            <li><span>@ultigrid/insight</span><small>{t('gallery.summary.insight')}</small></li>
+            <li><span>@ultigrid/core</span><small>{t('gallery.summary.core')}</small></li>
+          </ol>
+          <dl className="component-gallery__overview-stats">
+            <div><dt>{t('gallery.summary.scale')}</dt><dd>10¹⁰</dd></div>
+            <div><dt>{t('gallery.summary.examples')}</dt><dd>{GALLERY_EXAMPLES.length}</dd></div>
+            <div><dt>{t('gallery.summary.packages')}</dt><dd><PackageOpen size={15} /> 2</dd></div>
+          </dl>
+        </section>
+
         <header className="component-gallery__stage-head">
           <div>
             <span className="component-gallery__package">{active.packageName}</span>

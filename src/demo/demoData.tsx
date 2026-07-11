@@ -50,7 +50,6 @@ const AVATARS = [
 ]
 
 const COLUMN_WIDTHS: Record<StudioScenario, ReadonlyMap<number, number>> = {
-  capabilities: new Map(),
   gallery: new Map(),
   analysis: new Map([
     [0, 200], [1, 160], [2, 148], [3, 108], [4, 136],
@@ -108,14 +107,17 @@ export function createDemoRowSource(
       const logicalIndex = tree?.logicalIndexAt(index) ?? index
       const position = logicalIndex % TREE_GROUP_SIZE
       const groupRoot = logicalIndex - position
-      const depth = tree ? (position === 0 ? 0 : position % 6 === 1 ? 1 : 2) : 0
-      const expandable = Boolean(tree && depth === 0 && logicalIndex + 1 < rowCount)
-      const branchParent = groupRoot + 1 + Math.floor(Math.max(0, position - 1) / 6) * 6
+      const depth = tree ? treeDepth(logicalIndex) : 0
+      const expandable = Boolean(tree && isTreeNodeExpandable(logicalIndex, rowCount))
       target.id = logicalIndex
       target.depth = depth
-      target.parentId = depth === 0 ? undefined : depth === 1 ? groupRoot : branchParent
+      target.parentId = depth === 0
+        ? undefined
+        : depth === 1
+          ? groupRoot
+          : groupRoot + branchPositionForLeaf(position)
       target.expandable = expandable
-      target.expanded = expandable && tree!.isExpandedRoot(logicalIndex)
+      target.expanded = expandable && tree!.isExpanded(logicalIndex)
       target.loading = false
       target.error = undefined
       return target
@@ -124,11 +126,12 @@ export function createDemoRowSource(
 }
 
 const TREE_GROUP_SIZE = 18
+const TREE_BRANCH_POSITIONS = [1, 7, 13] as const
 
 interface TreeVisibilityIndex {
   visibleCount: number
   logicalIndexAt(visibleIndex: number): number
-  isExpandedRoot(rootIndex: number): boolean
+  isExpanded(logicalIndex: number): boolean
 }
 
 function createTreeVisibilityIndex(
@@ -137,66 +140,103 @@ function createTreeVisibilityIndex(
   expandedByDefault: boolean,
 ): TreeVisibilityIndex {
   const groupCount = Math.ceil(rowCount / TREE_GROUP_SIZE)
-  const toggledGroups = [...toggledRows]
-    .filter((row) => row >= 0 && row < rowCount && row % TREE_GROUP_SIZE === 0)
-    .map((row) => Math.floor(row / TREE_GROUP_SIZE))
-    .sort((left, right) => left - right)
-  const toggledSet = new Set(toggledGroups)
-  const prefixChildren = new Int32Array(toggledGroups.length + 1)
-  for (let index = 0; index < toggledGroups.length; index += 1) {
-    prefixChildren[index + 1] = prefixChildren[index]!
-      + childCountForGroup(toggledGroups[index]!, rowCount)
+  const isExpanded = (logicalIndex: number) => {
+    if (!isTreeNodeExpandable(logicalIndex, rowCount)) return false
+    return expandedByDefault ? !toggledRows.has(logicalIndex) : toggledRows.has(logicalIndex)
   }
-
-  const toggledChildrenBefore = (group: number) => {
-    const index = lowerBound(toggledGroups, group)
-    return prefixChildren[index] ?? 0
+  const visiblePrefix = new Int32Array(groupCount + 1)
+  for (let group = 0; group < groupCount; group += 1) {
+    const root = group * TREE_GROUP_SIZE
+    const length = Math.min(TREE_GROUP_SIZE, rowCount - root)
+    visiblePrefix[group + 1] = visiblePrefix[group]!
+      + visibleCountForGroup(root, length, isExpanded)
   }
-  const visibleBeforeGroup = (group: number) => {
-    const toggledChildren = toggledChildrenBefore(group)
-    return expandedByDefault
-      ? Math.min(rowCount, group * TREE_GROUP_SIZE) - toggledChildren
-      : group + toggledChildren
-  }
-  const visibleCount = visibleBeforeGroup(groupCount)
+  const visibleCount = visiblePrefix[groupCount] ?? 0
 
   return {
     visibleCount,
     logicalIndexAt(visibleIndex) {
+      if (visibleCount === 0) return -1
       const target = Math.min(Math.max(0, visibleIndex), Math.max(0, visibleCount - 1))
       let low = 0
       let high = Math.max(0, groupCount - 1)
       while (low < high) {
         const middle = Math.ceil((low + high) / 2)
-        if (visibleBeforeGroup(middle) <= target) low = middle
+        if (visiblePrefix[middle]! <= target) low = middle
         else high = middle - 1
       }
-      const localIndex = target - visibleBeforeGroup(low)
       const root = low * TREE_GROUP_SIZE
-      const expanded = expandedByDefault ? !toggledSet.has(low) : toggledSet.has(low)
-      return Math.min(rowCount - 1, root + (expanded ? localIndex : 0))
+      const length = Math.min(TREE_GROUP_SIZE, rowCount - root)
+      return logicalIndexInGroup(
+        root,
+        length,
+        target - visiblePrefix[low]!,
+        isExpanded,
+      )
     },
-    isExpandedRoot(rootIndex) {
-      const group = Math.floor(rootIndex / TREE_GROUP_SIZE)
-      return expandedByDefault ? !toggledSet.has(group) : toggledSet.has(group)
-    },
+    isExpanded,
   }
 }
 
-function childCountForGroup(group: number, rowCount: number): number {
-  const start = group * TREE_GROUP_SIZE
-  return Math.max(0, Math.min(TREE_GROUP_SIZE, rowCount - start) - 1)
+function visibleCountForGroup(
+  root: number,
+  length: number,
+  isExpanded: (logicalIndex: number) => boolean,
+): number {
+  if (length <= 0) return 0
+  if (!isExpanded(root)) return 1
+  let visible = 1
+  for (const branchPosition of TREE_BRANCH_POSITIONS) {
+    if (branchPosition >= length) break
+    visible += 1
+    const childCount = branchChildCount(branchPosition, length)
+    if (childCount > 0 && isExpanded(root + branchPosition)) visible += childCount
+  }
+  return visible
 }
 
-function lowerBound(values: readonly number[], target: number): number {
-  let low = 0
-  let high = values.length
-  while (low < high) {
-    const middle = (low + high) >> 1
-    if (values[middle]! < target) low = middle + 1
-    else high = middle
+function logicalIndexInGroup(
+  root: number,
+  length: number,
+  visibleIndex: number,
+  isExpanded: (logicalIndex: number) => boolean,
+): number {
+  if (visibleIndex === 0) return root
+  let cursor = 1
+  for (const branchPosition of TREE_BRANCH_POSITIONS) {
+    if (branchPosition >= length) break
+    if (visibleIndex === cursor) return root + branchPosition
+    cursor += 1
+    const childCount = branchChildCount(branchPosition, length)
+    if (childCount > 0 && isExpanded(root + branchPosition)) {
+      if (visibleIndex < cursor + childCount) {
+        return root + branchPosition + 1 + visibleIndex - cursor
+      }
+      cursor += childCount
+    }
   }
-  return low
+  return root + length - 1
+}
+
+function isTreeNodeExpandable(logicalIndex: number, rowCount: number): boolean {
+  if (logicalIndex < 0 || logicalIndex >= rowCount) return false
+  const position = logicalIndex % TREE_GROUP_SIZE
+  const groupLength = Math.min(TREE_GROUP_SIZE, rowCount - (logicalIndex - position))
+  if (position === 0) return groupLength > 1
+  return TREE_BRANCH_POSITIONS.includes(position as (typeof TREE_BRANCH_POSITIONS)[number])
+    && branchChildCount(position, groupLength) > 0
+}
+
+function branchChildCount(branchPosition: number, groupLength: number): number {
+  const nextBranch = TREE_BRANCH_POSITIONS.find((position) => position > branchPosition)
+    ?? TREE_GROUP_SIZE
+  return Math.max(0, Math.min(nextBranch, groupLength) - branchPosition - 1)
+}
+
+function branchPositionForLeaf(position: number): number {
+  if (position < 7) return 1
+  if (position < 13) return 7
+  return 13
 }
 
 export function createDemoColumnGetter(
@@ -349,12 +389,12 @@ function createTreeColumns(locale: Locale): InsightColumn<DemoRow>[] {
       header: <ColumnHeader label={translate(locale, 'demo.column.tree')} />,
       headerText: translate(locale, 'demo.column.tree'),
       getValue: (row) => treeLabel(row.index, locale),
-      renderContent: ({ rowIndex, displayValue }) => (
-        <span className={`demo-tree-node demo-tree-node--depth-${treeDepth(rowIndex)}`}>
-          <i>{treeNodeCode(rowIndex)}</i>
+      renderContent: ({ row, displayValue }) => (
+        <span className={`demo-tree-node demo-tree-node--depth-${treeDepth(row.index)}`}>
+          <i>{treeNodeCode(row.index)}</i>
           <span>
             <strong>{displayValue}</strong>
-            <small>{localizedValue(locale, CHANNEL_KEYS, rowIndex)}</small>
+            <small>{localizedValue(locale, CHANNEL_KEYS, row.index)}</small>
           </span>
         </span>
       ),
@@ -380,7 +420,7 @@ function createTreeColumns(locale: Locale): InsightColumn<DemoRow>[] {
       headerText: translate(locale, 'demo.column.owner'),
       getValue: (row) => owners[row.index % owners.length],
       image: (context) => ({
-        src: AVATARS[context.rowIndex % AVATARS.length]!,
+        src: AVATARS[context.row.index % AVATARS.length]!,
         alt: translate(locale, 'demo.avatar', { name: String(context.value) }),
         width: 22,
         height: 22,
@@ -430,8 +470,8 @@ function createTreeColumns(locale: Locale): InsightColumn<DemoRow>[] {
       header: <ColumnHeader label={translate(locale, 'demo.column.status')} />,
       headerText: translate(locale, 'demo.column.status'),
       getValue: (row) => statuses[(row.index + treeDepth(row.index)) % statuses.length],
-      renderContent: ({ displayValue, rowIndex }) => (
-        <span className={`demo-status demo-status--tone-${(rowIndex + treeDepth(rowIndex)) % 4}`}>
+      renderContent: ({ displayValue, row }) => (
+        <span className={`demo-status demo-status--tone-${(row.index + treeDepth(row.index)) % 4}`}>
           {displayValue}
         </span>
       ),
