@@ -1,51 +1,34 @@
 import { describe, expect, it } from 'vitest'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { ComponentGallery, GALLERY_SOURCE_URLS } from '../src/demo/ComponentGallery'
+import { ComponentGallery } from '../src/demo/ComponentGallery'
 import { RepositoryIntro } from '../src/demo/RepositoryIntro'
-import { GALLERY_EXAMPLES, type GalleryExampleId } from '../src/demo/galleryExamples'
-import galleryExampleSource from '../src/demo/galleryExamples.tsx?raw'
+import { GALLERY_EXAMPLES } from '../src/demo/galleryExamples'
 import { I18nProvider } from '../src/i18n'
 
-const EXAMPLE_FUNCTIONS = {
-  virtualization: 'VirtualizationExample',
-  frozen: 'FrozenExample',
-  sizing: 'SizingExample',
-  selection: 'SelectionExample',
-  renderer: 'RendererExample',
-  merging: 'MergingExample',
-  tree: 'TreeExample',
-  conditional: 'ConditionalExample',
-  lazy: 'LazyDataExample',
-  api: 'ImperativeApiExample',
-  export: 'ExportExample',
-} as const satisfies Record<GalleryExampleId, string>
-
 describe('ComponentGallery', () => {
-  it('maps every interactive example to its GitHub implementation', () => {
-    expect(Object.keys(GALLERY_SOURCE_URLS)).toEqual(GALLERY_EXAMPLES.map(({ id }) => id))
-    expect(new Set(Object.values(GALLERY_SOURCE_URLS)).size).toBe(GALLERY_EXAMPLES.length)
-    for (const url of Object.values(GALLERY_SOURCE_URLS)) {
-      expect(url).toMatch(/^https:\/\/github\.com\/Whiskeyi\/UltimateRenderTable\/blob\/main\/src\/demo\/galleryExamples\.tsx#L\d+$/)
-    }
-
-    const sourceLines = galleryExampleSource.split(/\r?\n/)
-    for (const [id, functionName] of Object.entries(EXAMPLE_FUNCTIONS)) {
-      const line = Number(GALLERY_SOURCE_URLS[id as GalleryExampleId].match(/#L(\d+)$/)?.[1])
-      expect(sourceLines[line - 1], id).toContain(`function ${functionName}`)
+  it('pairs every interactive example with its actual editable implementation', () => {
+    expect(new Set(GALLERY_EXAMPLES.map(({ id }) => id)).size).toBe(GALLERY_EXAMPLES.length)
+    expect(new Set(GALLERY_EXAMPLES.map(({ source }) => source)).size).toBe(GALLERY_EXAMPLES.length)
+    for (const example of GALLERY_EXAMPLES) {
+      expect(typeof example.component, example.id).toBe('function')
+      expect(example.source, example.id).toMatch(/export default function \w+Example/)
+      expect(example.source, example.id).toContain(`from '${example.packageName}'`)
     }
   })
 
-  it('renders a new-tab GitHub source link without an overview row above the grid', () => {
+  it('renders an in-place source editor trigger without extra gallery rows', () => {
     const markup = renderToStaticMarkup(
       <I18nProvider>
         <ComponentGallery />
       </I18nProvider>,
     )
 
-    expect(markup).toContain(`href="${GALLERY_SOURCE_URLS.virtualization}"`)
-    expect(markup).toContain('target="_blank"')
-    expect(markup).toContain('rel="noopener noreferrer"')
+    expect(markup).toContain('data-testid="gallery-editor-toggle-virtualization"')
+    expect(markup).toContain('aria-expanded="false"')
+    expect(markup).toContain('编辑源码')
+    expect(markup).not.toContain('GitHub 源码')
     expect(markup).not.toContain('component-gallery__overview')
+    expect(markup).not.toContain('component-gallery__hint')
     expect(markup).not.toContain('一个 Studio，两层公开 npm 包')
   })
 
@@ -61,6 +44,6 @@ describe('ComponentGallery', () => {
     expect(markup).toContain('@ultigrid/core')
     expect(markup).toContain(`<dd>${GALLERY_EXAMPLES.length}</dd>`)
     expect(markup).toContain('拖选、越界滚动与 Shift 扩选')
-    expect(markup).toContain('任意深度异步树')
+    expect(markup).toContain('aria-pressed="false">进阶能力</button>')
   })
 })

@@ -9,6 +9,8 @@ describe('translate', () => {
     expect(translate('en-US', 'error.scenario')).toContain('intro, gallery, analysis, or conditional')
     expect(translate('zh-CN', 'scenario.gallery')).toBe('组件展厅')
     expect(translate('en-US', 'scenario.gallery')).toBe('Component gallery')
+    expect(translate('zh-CN', 'gallery.editor.open')).toBe('编辑源码')
+    expect(translate('en-US', 'gallery.editor.live')).toBe('Live render')
     expect(translate('zh-CN', 'gallery.group.advanced')).toBe('进阶能力')
     expect(translate('en-US', 'gallery.tree.title')).toBe('Multi-level tree row model')
     expect(translate('zh-CN', 'gallery.lazy.title')).toBe('惰性行列数据')

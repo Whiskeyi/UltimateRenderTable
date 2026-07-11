@@ -1,12 +1,12 @@
 import {
   Braces,
-  Check,
   ChevronRight,
-  Github,
-  Keyboard,
-  MousePointer2,
+  Code2,
 } from 'lucide-react'
 import {
+  lazy,
+  Suspense,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -18,25 +18,13 @@ import {
   type GalleryExampleId,
 } from './galleryExamples'
 
-const GITHUB_GALLERY_SOURCE = 'https://github.com/Whiskeyi/UltimateRenderTable/blob/main/src/demo/galleryExamples.tsx'
-
-export const GALLERY_SOURCE_URLS = {
-  virtualization: `${GITHUB_GALLERY_SOURCE}#L167`,
-  frozen: `${GITHUB_GALLERY_SOURCE}#L188`,
-  sizing: `${GITHUB_GALLERY_SOURCE}#L225`,
-  selection: `${GITHUB_GALLERY_SOURCE}#L352`,
-  renderer: `${GITHUB_GALLERY_SOURCE}#L419`,
-  merging: `${GITHUB_GALLERY_SOURCE}#L281`,
-  tree: `${GITHUB_GALLERY_SOURCE}#L541`,
-  conditional: `${GITHUB_GALLERY_SOURCE}#L599`,
-  lazy: `${GITHUB_GALLERY_SOURCE}#L683`,
-  api: `${GITHUB_GALLERY_SOURCE}#L718`,
-  export: `${GITHUB_GALLERY_SOURCE}#L791`,
-} as const satisfies Record<GalleryExampleId, string>
+const LiveExampleWorkbench = lazy(() => import('./live/LiveExampleWorkbench'))
 
 export function ComponentGallery() {
   const { locale, t } = useI18n()
   const [activeId, setActiveId] = useState<GalleryExampleId>('virtualization')
+  const [editorOpen, setEditorOpen] = useState(false)
+  const [liveWorkbenchMounted, setLiveWorkbenchMounted] = useState(false)
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([])
   const active = useMemo(
     () => GALLERY_EXAMPLES.find((example) => example.id === activeId) ?? GALLERY_EXAMPLES[0]!,
@@ -47,6 +35,11 @@ export function ComponentGallery() {
     { level: 'basic', label: t('gallery.group.basic') },
     { level: 'advanced', label: t('gallery.group.advanced') },
   ] as const
+
+  useEffect(() => {
+    setEditorOpen(false)
+    setLiveWorkbenchMounted(false)
+  }, [activeId])
 
   const handleTabKeyDown = (
     event: ReactKeyboardEvent<HTMLButtonElement>,
@@ -119,26 +112,36 @@ export function ComponentGallery() {
             <h3>{t(active.titleKey)}</h3>
             <p>{t(active.detailKey)}</p>
           </div>
-          <a
+          <button
+            type="button"
             className="component-gallery__source"
-            data-testid={`gallery-source-${active.id}`}
-            href={GALLERY_SOURCE_URLS[active.id]}
-            target="_blank"
-            rel="noopener noreferrer"
+            data-testid={`gallery-editor-toggle-${active.id}`}
+            aria-expanded={editorOpen}
+            aria-controls="component-gallery-editor"
+            onClick={() => {
+              setLiveWorkbenchMounted(true)
+              setEditorOpen((open) => !open)
+            }}
           >
-            <Github size={15} /> {t('gallery.source')}
-          </a>
+            <Code2 size={15} /> {t(editorOpen ? 'gallery.editor.close' : 'gallery.editor.open')}
+          </button>
         </header>
 
         <div className="component-gallery__preview" data-example={active.id}>
-          <Example locale={locale} t={t} />
+          {liveWorkbenchMounted ? (
+            <Suspense fallback={<Example locale={locale} t={t} />}>
+              <LiveExampleWorkbench
+                key={active.id}
+                editorOpen={editorOpen}
+                example={active}
+                locale={locale}
+                t={t}
+              />
+            </Suspense>
+          ) : (
+            <Example locale={locale} t={t} />
+          )}
         </div>
-
-        <footer className="component-gallery__hint">
-          <span><MousePointer2 size={14} /> {t('gallery.interact.pointer')}</span>
-          <span><Keyboard size={14} /> {t('gallery.interact.keyboard')}</span>
-          <span><Check size={14} /> {t(active.hintKey)}</span>
-        </footer>
       </article>
     </section>
   )

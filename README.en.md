@@ -12,7 +12,7 @@ UltiGrid treats `100,000 × 100,000` as a logical coordinate space. Data is read
 
 | Layer | Directory / artifact | Responsibility |
 | --- | --- | --- |
-| Studio | `src/studio`, `src/demo` | Interactive demos, live Props/JSON, source viewing, i18n, fullscreen, and diagnostics; not published to npm |
+| Studio | `src/studio`, `src/demo` | Interactive demos, live Props/JSON, real-source editing and preview, i18n, fullscreen, and diagnostics; not published to npm |
 | Application grid | `src/bi` → `@ultigrid/insight` | Row and column models, trees, vertical adjacent-value merging within columns, conditional formatting, custom cells, and export |
 | Rendering grid | `src/core` → `@ultigrid/core` | Axis, two-axis virtualization, four-edge freezing, rectangle merges, selection, navigation, copy, and DOM |
 
@@ -127,11 +127,15 @@ Studio demonstrates how the two npm packages compose. It is not a production run
 | Tab | Content |
 | --- | --- |
 | Overview | Presents the Studio, application-grid, and rendering-grid layers, publishing boundaries, and capability summary without occupying a grid demo |
-| Component gallery | Groups 11 interactive examples into Basic and Advanced, covering lazy rows/columns, multi-level trees, imperative APIs, and Excel/CSV/PNG export, each with source |
+| Component gallery | Groups 11 interactive examples into Basic and Advanced; each edits the TSX file that implements the Demo and refreshes its preview live, covering lazy rows/columns, multi-level trees, imperative APIs, and Excel/CSV/PNG export |
 | Business analytics | Composite dimensions and metrics; roots and branches both expand across at least depths 0/1/2; same-column merging is independent and splits at sibling boundaries |
 | Conditional formatting | Combined text, background, icon, color-scale, and data-bar rules |
 
-Every grid scenario can display and copy TSX that imports the public npm entry points. The right-hand workbench provides visual Props, JSON, scale presets, and performance observations; Chinese and English can be switched immediately.
+The gallery editor reads the same `.tsx` file as the default preview through `?raw`, then recompiles edits with a 220ms debounce. Its runtime resolves only `react`, `lucide-react`, `@ultigrid/core`, and `@ultigrid/insight`; drafts remain in the current page.
+
+This editor is a local Demo tool, not a security sandbox. Do not automatically load or execute untrusted source from URLs, remote storage, or third-party shares.
+
+The component gallery verifies the public npm entry points one capability at a time. The right-hand workbench provides visual Props, JSON, scale presets, and performance observations; Chinese and English can be switched immediately.
 
 ## Repository layout
 
@@ -143,7 +147,7 @@ src/
 ├── core/          # rendering grid layer
 ├── bi/            # application grid layer
 ├── studio/        # Studio shell and Props editor
-├── demo/          # scenarios, component gallery, and source snippets
+├── demo/          # scenarios, component gallery, real Demo sources, and live-edit runtime
 └── i18n/          # Studio Chinese/English copy
 tests/             # algorithms, coordinates, data models, and public contracts
 docs/              # architecture and capability boundaries
