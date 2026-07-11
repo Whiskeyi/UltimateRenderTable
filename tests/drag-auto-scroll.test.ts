@@ -11,6 +11,21 @@ describe('drag selection auto-scroll', () => {
     expect(getDragAutoScrollVelocity({ x: 0, y: 500 }, bounds)).toEqual({ x: -32, y: 32 })
   })
 
+  it('can begin touch drag scrolling inside a coarse-pointer edge target', () => {
+    const bounds = { left: 100, right: 500, top: 50, bottom: 350 }
+
+    expect(getDragAutoScrollVelocity(
+      { x: 120, y: 330 },
+      bounds,
+      { edgeThreshold: 36 },
+    )).toEqual({ x: -5.6, y: 5.6 })
+    expect(getDragAutoScrollVelocity(
+      { x: 300, y: 200 },
+      bounds,
+      { edgeThreshold: 36 },
+    )).toEqual({ x: 0, y: 0 })
+  })
+
   it('resolves a clamped pointer against the current scroll position', () => {
     const rows = new Axis({ count: 100, defaultSize: 20 })
     const columns = new Axis({ count: 100, defaultSize: 50 })

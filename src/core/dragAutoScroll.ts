@@ -1,5 +1,5 @@
-import { Axis } from './axis'
-import type { CellAddress } from './viewportTypes'
+import { Axis } from './axis.js'
+import type { CellAddress } from './viewportTypes.js'
 
 interface Point {
   x: number
@@ -11,6 +11,11 @@ interface Bounds {
   right: number
   top: number
   bottom: number
+}
+
+interface AutoScrollOptions {
+  /** Starts scrolling while the pointer is this many pixels inside an edge. */
+  edgeThreshold?: number
 }
 
 interface ViewportRect {
@@ -36,10 +41,15 @@ const AUTO_SCROLL_ACCELERATION = 0.35
 const MIN_AUTO_SCROLL_SPEED = 1
 const CELL_EDGE_EPSILON = 0.5
 
-export function getDragAutoScrollVelocity(pointer: Point, bounds: Bounds): Point {
+export function getDragAutoScrollVelocity(
+  pointer: Point,
+  bounds: Bounds,
+  options: AutoScrollOptions = {},
+): Point {
+  const threshold = Math.max(0, options.edgeThreshold ?? 0)
   return {
-    x: edgeVelocity(pointer.x, bounds.left, bounds.right),
-    y: edgeVelocity(pointer.y, bounds.top, bounds.bottom),
+    x: edgeVelocity(pointer.x, bounds.left, bounds.right, threshold),
+    y: edgeVelocity(pointer.y, bounds.top, bounds.bottom, threshold),
   }
 }
 
@@ -76,11 +86,18 @@ export function resolveDragAddress(
   }
 }
 
-function edgeVelocity(coordinate: number, start: number, end: number): number {
-  const distance = coordinate < start
-    ? coordinate - start
-    : coordinate > end
-      ? coordinate - end
+function edgeVelocity(
+  coordinate: number,
+  start: number,
+  end: number,
+  threshold: number,
+): number {
+  const leadingEdge = start + Math.min(threshold, Math.max(0, end - start) / 2)
+  const trailingEdge = end - Math.min(threshold, Math.max(0, end - start) / 2)
+  const distance = coordinate < leadingEdge
+    ? coordinate - leadingEdge
+    : coordinate > trailingEdge
+      ? coordinate - trailingEdge
       : 0
   if (distance === 0) return 0
   const speed = Math.min(

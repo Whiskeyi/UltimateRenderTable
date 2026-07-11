@@ -57,6 +57,7 @@ import type {
   StudioTableConfig,
 } from './types'
 import { DEFAULT_STUDIO_CONFIG } from './types'
+import { STUDIO_COMPACT_LAYOUT_QUERY } from './layoutMode'
 import { writeTextToClipboard } from '../utils/clipboard'
 import './studio.css'
 
@@ -566,6 +567,7 @@ export function Studio<TConfig extends StudioTableConfig = StudioTableConfig>({
   const config = value ?? internalValue
   const [inspectorTab, setInspectorTab] = useState<InspectorTab>('props')
   const [inspectorOpen, setInspectorOpen] = useState(true)
+  const [mobileLayout, setMobileLayout] = useState(false)
   const [inspectorWidth, setInspectorWidth] = useState(410)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [fallbackFullscreen, setFallbackFullscreen] = useState(false)
@@ -583,14 +585,25 @@ export function Studio<TConfig extends StudioTableConfig = StudioTableConfig>({
   const propsPanelId = `${studioId}-panel-props`
   const jsonPanelId = `${studioId}-panel-json`
   const jsonStatusId = `${studioId}-json-status`
+  const inspectorId = `${studioId}-inspector`
   const jsonFocusedRef = useRef(false)
   const copyTimerRef = useRef<number | null>(null)
   const latestConfigRef = useRef(config)
   const inspectorToggleRef = useRef<HTMLButtonElement>(null)
+  const mobileInspectorToggleRef = useRef<HTMLButtonElement>(null)
   const inspectorCloseRef = useRef<HTMLButtonElement>(null)
+  const inspectorRef = useRef<HTMLElement>(null)
+  const sheetDragRef = useRef<{
+    pointerId: number
+    startY: number
+    startedAt: number
+    offset: number
+    didDrag: boolean
+  } | null>(null)
   const previousInspectorOpenRef = useRef(inspectorOpen)
   const exportTriggerRef = useRef<HTMLButtonElement>(null)
   const exportPopoverRef = useRef<HTMLDivElement>(null)
+  const studioRootRef = useRef<HTMLElement>(null)
   const stageShellRef = useRef<HTMLElement>(null)
   latestConfigRef.current = config
 
@@ -638,9 +651,81 @@ export function Studio<TConfig extends StudioTableConfig = StudioTableConfig>({
     if (previous === inspectorOpen) return
     requestAnimationFrame(() => {
       if (inspectorOpen) inspectorCloseRef.current?.focus()
+      else if (mobileLayout) mobileInspectorToggleRef.current?.focus()
       else inspectorToggleRef.current?.focus()
     })
-  }, [inspectorOpen])
+  }, [inspectorOpen, mobileLayout])
+
+  useEffect(() => {
+    if (typeof window.matchMedia !== 'function') return
+    const query = window.matchMedia(STUDIO_COMPACT_LAYOUT_QUERY)
+    const syncLayout = (matches: boolean) => {
+      setMobileLayout(matches)
+      if (!matches) return
+      previousInspectorOpenRef.current = false
+      setInspectorOpen(false)
+      inspectorRef.current?.classList.remove('is-sheet-dragging')
+      inspectorRef.current?.style.setProperty('--studio-sheet-offset', '0px')
+      sheetDragRef.current = null
+    }
+
+    const handleChange = (event: MediaQueryListEvent) => syncLayout(event.matches)
+    syncLayout(query.matches)
+    query.addEventListener('change', handleChange)
+    return () => query.removeEventListener('change', handleChange)
+  }, [])
+
+  useEffect(() => {
+    const viewport = window.visualViewport
+    const root = studioRootRef.current
+    const stage = stageShellRef.current
+    if (!viewport || !root || !stage) return
+
+    const syncVisualViewport = () => {
+      const visualViewportHeight = Math.max(0, viewport.height)
+      const visualViewportTop = Math.max(0, viewport.offsetTop)
+      const visualViewportBottom = visualViewportTop + visualViewportHeight
+      const stageBounds = stage.getBoundingClientRect()
+      const stageAvailableHeight = Math.max(
+        0,
+        Math.min(stageBounds.bottom, visualViewportBottom)
+          - Math.max(stageBounds.top, visualViewportTop),
+      )
+      const rawInset = Math.max(
+        0,
+        window.innerHeight - visualViewportHeight - visualViewportTop,
+      )
+      const activeElement = document.activeElement
+      const isEditing = activeElement instanceof HTMLElement
+        && activeElement.matches('input, textarea, select, [contenteditable="true"]')
+      const compactLayout = window.matchMedia(STUDIO_COMPACT_LAYOUT_QUERY).matches
+      const keyboardInset = rawInset > 80 && isEditing && compactLayout ? rawInset : 0
+      const keyboardOpen = keyboardInset > 0
+
+      root.style.setProperty('--studio-keyboard-inset', `${keyboardInset}px`)
+      root.classList.toggle('has-virtual-keyboard', keyboardOpen)
+      stage.style.setProperty('--studio-keyboard-inset', `${keyboardInset}px`)
+      stage.style.setProperty('--studio-stage-available-height', `${stageAvailableHeight}px`)
+      stage.style.setProperty('--studio-visual-viewport-height', `${visualViewportHeight}px`)
+      stage.style.setProperty('--studio-visual-viewport-offset-top', `${visualViewportTop}px`)
+      stage.dataset.virtualKeyboard = keyboardOpen ? 'open' : 'closed'
+    }
+
+    syncVisualViewport()
+    viewport.addEventListener('resize', syncVisualViewport)
+    viewport.addEventListener('scroll', syncVisualViewport)
+    return () => {
+      viewport.removeEventListener('resize', syncVisualViewport)
+      viewport.removeEventListener('scroll', syncVisualViewport)
+      root.style.removeProperty('--studio-keyboard-inset')
+      root.classList.remove('has-virtual-keyboard')
+      stage.style.removeProperty('--studio-keyboard-inset')
+      stage.style.removeProperty('--studio-stage-available-height')
+      stage.style.removeProperty('--studio-visual-viewport-height')
+      stage.style.removeProperty('--studio-visual-viewport-offset-top')
+      stage.dataset.virtualKeyboard = 'closed'
+    }
+  }, [])
 
   useEffect(() => {
     if (!exportOpen) return
@@ -770,6 +855,82 @@ export function Studio<TConfig extends StudioTableConfig = StudioTableConfig>({
     [inspectorWidth],
   )
 
+  const toggleInspector = useCallback(() => {
+    setExportOpen(false)
+    setDiagnosticsOpen(false)
+    setInspectorOpen((open) => !open)
+  }, [])
+
+  const applyScalePreset = useCallback((presetId: string) => {
+    const preset = SCALE_PRESETS.find((item) => item.id === presetId)
+    if (preset) patchConfig(preset.patch as Partial<TConfig>, 'preset')
+  }, [patchConfig])
+
+  const handleSheetPointerDown = useCallback((event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (!mobileLayout || event.button !== 0) return
+    event.currentTarget.setPointerCapture(event.pointerId)
+    sheetDragRef.current = {
+      pointerId: event.pointerId,
+      startY: event.clientY,
+      startedAt: performance.now(),
+      offset: 0,
+      didDrag: false,
+    }
+    inspectorRef.current?.classList.add('is-sheet-dragging')
+  }, [mobileLayout])
+
+  const handleSheetPointerMove = useCallback((event: ReactPointerEvent<HTMLButtonElement>) => {
+    const drag = sheetDragRef.current
+    if (!drag || drag.pointerId !== event.pointerId) return
+    const offset = Math.max(0, event.clientY - drag.startY)
+    drag.offset = offset
+    if (offset > 6) drag.didDrag = true
+    inspectorRef.current?.style.setProperty('--studio-sheet-offset', `${offset}px`)
+  }, [])
+
+  const handleSheetPointerEnd = useCallback((event: ReactPointerEvent<HTMLButtonElement>) => {
+    const drag = sheetDragRef.current
+    if (!drag || drag.pointerId !== event.pointerId) return
+    const inspector = inspectorRef.current
+    const elapsed = Math.max(1, performance.now() - drag.startedAt)
+    const height = inspector?.getBoundingClientRect().height ?? 560
+    const shouldClose = drag.offset > Math.min(140, height * 0.25)
+      || (drag.offset > 48 && drag.offset / elapsed > 0.65)
+
+    inspector?.classList.remove('is-sheet-dragging')
+    inspector?.style.setProperty('--studio-sheet-offset', '0px')
+    sheetDragRef.current = shouldClose
+      ? null
+      : drag.didDrag
+        ? { ...drag, pointerId: -1 }
+        : null
+    if (shouldClose) setInspectorOpen(false)
+  }, [])
+
+  const handleSheetHandleClick = useCallback(() => {
+    const drag = sheetDragRef.current
+    sheetDragRef.current = null
+    if (drag?.didDrag) return
+    setInspectorOpen(false)
+  }, [])
+
+  const handleInspectorKeyboard = useCallback((event: KeyboardEvent<HTMLElement>) => {
+    if (!mobileLayout || event.key !== 'Tab') return
+    const focusable = Array.from(event.currentTarget.querySelectorAll<HTMLElement>(
+      'button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])',
+    )).filter((element) => element.getClientRects().length > 0)
+    if (focusable.length === 0) return
+    const first = focusable[0]!
+    const last = focusable[focusable.length - 1]!
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault()
+      last.focus()
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault()
+      first.focus()
+    }
+  }, [mobileLayout])
+
   const handleKeyboard = (event: KeyboardEvent<HTMLElement>) => {
     if ((event.metaKey || event.ctrlKey) && event.key === '\\') {
       event.preventDefault()
@@ -783,6 +944,7 @@ export function Studio<TConfig extends StudioTableConfig = StudioTableConfig>({
       if (exportOpen) closeExport()
       else if (diagnosticsOpen) setDiagnosticsOpen(false)
       else if (fallbackFullscreen) setFallbackFullscreen(false)
+      else if (inspectorOpen) setInspectorOpen(false)
     }
   }
 
@@ -794,6 +956,8 @@ export function Studio<TConfig extends StudioTableConfig = StudioTableConfig>({
   const activeScenario = SCENARIOS.find((item) => item.value === config.scenario) ?? SCENARIOS[0]!
   const isTableScenario = activeScenario.kind === 'table'
   const effectiveInspectorOpen = inspectorOpen && isTableScenario
+  const mobileInspectorModalOpen = mobileLayout && effectiveInspectorOpen
+  const previousTableScenarioRef = useRef(isTableScenario)
   const activePreset = SCALE_PRESETS.find(
     (preset) =>
       preset.patch.rowCount === config.rowCount &&
@@ -806,9 +970,23 @@ export function Studio<TConfig extends StudioTableConfig = StudioTableConfig>({
       : t('studio.status.live')
   const jsonDirty = jsonDraft !== serializeConfig(config)
   const sampledExport = config.rowCount > 2_000 || config.columnCount > 128
+
+  useEffect(() => {
+    const wasTableScenario = previousTableScenarioRef.current
+    previousTableScenarioRef.current = isTableScenario
+    if (!wasTableScenario || isTableScenario || !inspectorOpen) return
+    setInspectorOpen(false)
+    requestAnimationFrame(() => {
+      studioRootRef.current
+        ?.querySelector<HTMLButtonElement>('.studio-scenarios button.is-active')
+        ?.focus()
+    })
+  }, [inspectorOpen, isTableScenario])
+
   const studioClassName = [
     'table-studio',
     effectiveInspectorOpen ? 'has-inspector' : 'is-inspector-hidden',
+    mobileLayout ? 'is-mobile-layout' : '',
     className ?? '',
   ]
     .filter(Boolean)
@@ -822,12 +1000,17 @@ export function Studio<TConfig extends StudioTableConfig = StudioTableConfig>({
 
   return (
     <main
+      ref={studioRootRef}
       className={studioClassName}
       style={studioStyle}
       onKeyDown={handleKeyboard}
       data-inspector-open={effectiveInspectorOpen}
     >
-      <header className="studio-topbar">
+      <header
+        className="studio-topbar"
+        inert={mobileInspectorModalOpen}
+        aria-hidden={mobileInspectorModalOpen || undefined}
+      >
         <div className="studio-brand">
           <span className="studio-brand-mark" aria-hidden="true">
             <Grid2X2 size={20} strokeWidth={1.8} />
@@ -846,7 +1029,10 @@ export function Studio<TConfig extends StudioTableConfig = StudioTableConfig>({
               key={scenario}
               data-scenario={scenario}
               className={config.scenario === scenario ? 'is-active' : undefined}
-              onClick={() => patchConfig(patch as Partial<TConfig>)}
+              onClick={() => {
+                patchConfig(patch as Partial<TConfig>)
+                if (mobileLayout) setInspectorOpen(false)
+              }}
               aria-pressed={config.scenario === scenario}
               title={t(detailKey)}
             >
@@ -902,7 +1088,10 @@ export function Studio<TConfig extends StudioTableConfig = StudioTableConfig>({
                   aria-expanded={exportOpen}
                   aria-label={t('studio.export')}
                   disabled={!onExport || Boolean(exporting)}
-                  onClick={() => setExportOpen((open) => !open)}
+                  onClick={() => {
+                    if (mobileLayout) setInspectorOpen(false)
+                    setExportOpen((open) => !open)
+                  }}
                 >
                   <Download size={16} />
                   <span>{exporting ? t('studio.exporting', { format: exporting.toUpperCase() }) : t('studio.export')}</span>
@@ -947,10 +1136,11 @@ export function Studio<TConfig extends StudioTableConfig = StudioTableConfig>({
               ref={inspectorToggleRef}
               type="button"
               className="studio-icon-button studio-inspector-toggle"
-              onClick={() => setInspectorOpen((open) => !open)}
+              onClick={toggleInspector}
               title={`${t('studio.inspector.toggle')} (⌘\)`}
               aria-label={inspectorOpen ? t('studio.inspector.collapse') : t('studio.inspector.expand')}
               aria-expanded={inspectorOpen}
+              aria-controls={inspectorId}
             >
               {inspectorOpen ? <PanelRightClose size={18} /> : <PanelRightOpen size={18} />}
             </button>
@@ -962,7 +1152,10 @@ export function Studio<TConfig extends StudioTableConfig = StudioTableConfig>({
         <section
           ref={stageShellRef}
           className={`studio-stage-shell ${fallbackFullscreen ? 'is-fallback-fullscreen' : ''}`}
+          data-virtual-keyboard="closed"
           aria-label={t('studio.stage.label')}
+          inert={mobileInspectorModalOpen}
+          aria-hidden={mobileInspectorModalOpen || undefined}
         >
           <div className="studio-stage-toolbar">
             <div className="studio-stage-title">
@@ -982,16 +1175,24 @@ export function Studio<TConfig extends StudioTableConfig = StudioTableConfig>({
                 </span>
               ) : (
                 <>
+                  <button
+                    ref={mobileInspectorToggleRef}
+                    type="button"
+                    className="studio-mobile-inspector-trigger"
+                    onClick={toggleInspector}
+                    title={t('studio.inspector.expand')}
+                    aria-label={t('studio.inspector.expand')}
+                    aria-expanded={mobileLayout && effectiveInspectorOpen}
+                    aria-controls={inspectorId}
+                  >
+                    <Settings2 size={18} />
+                    <span>{t('studio.inspector.title')}</span>
+                  </button>
                   <label className="studio-scale-picker">
                     <span>{t('studio.scale')}</span>
                     <select
                       value={activePreset?.id ?? 'custom'}
-                      onChange={(event) => {
-                        const preset = SCALE_PRESETS.find((item) => item.id === event.target.value)
-                        if (preset) {
-                          patchConfig(preset.patch as Partial<TConfig>, 'preset')
-                        }
-                      }}
+                      onChange={(event) => applyScalePreset(event.target.value)}
                       aria-label={t('studio.scale.preset')}
                     >
                       {!activePreset ? <option value="custom">{t('preset.custom')}</option> : null}
@@ -1098,10 +1299,27 @@ export function Studio<TConfig extends StudioTableConfig = StudioTableConfig>({
         ) : null}
 
         <aside
+          ref={inspectorRef}
+          id={inspectorId}
           className="studio-inspector"
+          role={mobileLayout ? 'dialog' : undefined}
+          aria-modal={mobileLayout ? true : undefined}
           aria-label={t('studio.inspector.label')}
           data-testid="studio-inspector"
+          onKeyDown={handleInspectorKeyboard}
         >
+          <button
+            type="button"
+            className="studio-sheet-grabber"
+            aria-label={t('studio.inspector.close')}
+            onClick={handleSheetHandleClick}
+            onPointerDown={handleSheetPointerDown}
+            onPointerMove={handleSheetPointerMove}
+            onPointerUp={handleSheetPointerEnd}
+            onPointerCancel={handleSheetPointerEnd}
+          >
+            <span aria-hidden="true" />
+          </button>
           <button
             type="button"
             className="studio-inspector-resizer"
@@ -1129,6 +1347,15 @@ export function Studio<TConfig extends StudioTableConfig = StudioTableConfig>({
             </div>
             <div className="studio-inspector-head-actions">
               <span className="studio-sync-state"><span /> {t('studio.connected')}</span>
+              <button
+                type="button"
+                className="studio-inspector-mobile-reset"
+                onClick={resetConfig}
+                title={t('studio.reset')}
+                aria-label={t('studio.reset')}
+              >
+                <RotateCcw size={16} />
+              </button>
               <button
                 ref={inspectorCloseRef}
                 type="button"
@@ -1191,6 +1418,27 @@ export function Studio<TConfig extends StudioTableConfig = StudioTableConfig>({
               role="tabpanel"
               aria-labelledby={propsTabId}
             >
+              <label className="studio-mobile-scale-picker">
+                <span>
+                  <Gauge size={16} />
+                  {t('studio.scale')}
+                </span>
+                <span>
+                  <select
+                    value={activePreset?.id ?? 'custom'}
+                    onChange={(event) => applyScalePreset(event.target.value)}
+                    aria-label={t('studio.scale.preset')}
+                  >
+                    {!activePreset ? <option value="custom">{t('preset.custom')}</option> : null}
+                    {SCALE_PRESETS.map((preset) => (
+                      <option key={preset.id} value={preset.id}>
+                        {t(preset.labelKey)} · {preset.detail}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown size={15} aria-hidden="true" />
+                </span>
+              </label>
               <div className="studio-config-summary">
                 <span>
                   <small>{t('studio.summary.grid')}</small>

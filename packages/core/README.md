@@ -1,6 +1,6 @@
 # @ultigrid/core
 
-The rendering grid behind UltiGrid: a React DOM viewport engine with two-axis virtualization, four-edge freezing, rectangle merges, selection, keyboard navigation, and copy.
+The rendering grid behind UltiGrid: a React DOM viewport engine with two-axis virtualization, four-edge freezing, rectangle merges, desktop and touch selection, keyboard navigation, and copy.
 
 Core reads cells by coordinate and keeps BI semantics outside the rendering hot path. It does not allocate a two-dimensional data matrix or infer merges from business values.
 
@@ -41,6 +41,9 @@ export function CoordinateGrid() {
       frozen={{ top: 1, left: 1 }}
       overscan={{ rows: 5, columns: 2 }}
       themeColor="#c2410c"
+      mobileInteraction={{ mode: 'auto' }}
+      selectionBounds={{ rowStart: 1, rowEnd: 99_999, columnStart: 0, columnEnd: 99_999 }}
+      columnResize={{ headerRows: [0], minWidth: 72, maxWidth: 520, touchActivationDelay: 280 }}
       style={{ height: 520 }}
     />
   )
@@ -55,12 +58,12 @@ Coordinates are zero-based and range ends are inclusive. Keep getters, size maps
 | --- | --- |
 | Component | `UltiGridViewport` |
 | Data | `rowCount`, `columnCount`, `getCell` |
-| Layout | defaults, sparse size maps/getters, `frozen`, `overscan`, `fitColumns`, `autoSize` |
+| Layout | defaults, sparse size maps/getters, `frozen`, `overscan`, `fitColumns`, `autoSize`, direct column resize |
 | Rendering | `renderCell`, styles, classes, metadata, ARIA hooks, `contentVersion` cache invalidation |
 | Merging | explicit, non-overlapping `MergedCellRange` rectangles, including horizontal and arbitrary 2D ranges |
-| Interaction | controlled/uncontrolled selection, keyboard navigation, TSV copy |
+| Interaction | bounded controlled/uncontrolled selection, keyboard navigation, TSV copy, native touch scrolling, tap-safe selection, drag handle, safe-area copy action |
 | Theme | `themeColor` controls selection and focus accents; CSS variables remain available for deeper styling |
-| Imperative API | scroll, selection, copy through `UltiGridViewportApi` / `ApiRef` |
+| Imperative API | scroll, selection, effective width reads, and copy through `UltiGridViewportApi` / `ApiRef` |
 | Observation | `onViewportChange`, `ViewportSnapshot` |
 
 Only these package paths are supported:
@@ -70,11 +73,22 @@ Only these package paths are supported:
 
 Axis, virtualizer, MergeIndex, and selection helpers are internal implementations.
 
+`mobileInteraction` defaults to automatic coarse-pointer and live touch-input detection, so hybrid laptops do not show touch chrome until it is useful. Native one-finger two-axis scrolling remains browser-driven; a cell is selected only after a tap completes without a pan or scroll. The active cell exposes a 44 px drag target for range extension and edge auto-scroll, while a 44 px safe-area-aware action copies the range. Use `labels` to localize every visible or announced string, or set `showCopyAction: false` when the host supplies its own toolbar.
+
+Core owns raw pointer gestures, zero-based viewport coordinates, and Axis updates. It does not infer business columns or host chrome.
+
+`selectionBounds` constrains pointer starts, drag extension, controlled/default ranges, and keyboard navigation to one inclusive viewport rectangle. Pass `null` to disable selection without disabling scrolling.
+
+`columnResize` is opt-in and defaults to viewport row `0` as its header. Configure exact zero-based `headerRows`, exclude chrome columns with `isColumnResizable`, set numeric or per-column `minWidth` / `maxWidth`, a keyboard step, and a localized separator label. Touch waits 280 ms by default before activating resize, so the 44 px coarse-pointer separator does not steal a horizontal pan; set `touchActivationDelay: 0` for immediate activation. Separators also support mouse, pen, `ArrowLeft` / `ArrowRight`, `Home`, and `End`; `Alt` uses a one-pixel step and `Shift` accelerates. Core applies widths immediately and reports the lifecycle through `onColumnResize`. Its `viewportColumn` is always the zero-based Core coordinate, including host-added row-number or hierarchy columns. New `columnWidths` or `getColumnWidth` references are consumed without discarding the active manual layout or re-entering stretch, so `phase: "end"` can be persisted directly. `columnCount`, `defaultColumnWidth`, `fitColumns`, and `columnLayoutVersion` are layout-reset inputs. Increment `columnLayoutVersion` after mutating stable width getters, replacing a same-sized column model, or when an external source must authoritatively replace the active stretch/manual layout; Core then re-reads widths and clears measured, stretch-baseline, and manual width state. `contentVersion` remains content-only.
+
+`apiRef.current.getColumnWidth(viewportColumn)` returns the effective width, including fit and active/manual resize state, or `undefined` for an invalid coordinate. This supports WYSIWYG export without exposing internal width maps.
+
 ## Performance and memory
 
 - Row and column windows are located in `O(log N)` through typed segment trees.
 - Exact visible ranges are tracked separately from a direction-aware retained render window; scrolling inside its guard does not regroup React cells.
 - Scroll rAF writes pane-layer transforms directly. `onViewportChange` still reports exact visible bounds while `renderedCellCount` reports the retained workset.
+- Column-resize pointer events are coalesced to one rAF; the active Axis changes in `O(log N)` and the sparse width map is persisted once on completion.
 - Ordinary DOM follows the viewport, overscan, effective frozen regions, and merge fragments.
 - Sparse custom sizes use `ReadonlyMap`; the axis trees themselves use `O(Nᵣ + N𝚌)` memory.
 - A merge spanning many cells remains one indexed rectangle; Core never expands it into per-cell records.

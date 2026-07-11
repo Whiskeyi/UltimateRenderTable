@@ -29,7 +29,7 @@ describe('ComponentGallery', () => {
     expect(markup).not.toContain('GitHub 源码')
     expect(markup).not.toContain('component-gallery__overview')
     expect(markup).not.toContain('component-gallery__hint')
-    expect(markup).not.toContain('一个 Studio，两层公开 npm 包')
+    expect(markup).not.toContain('Studio + 应用层表格 + 表格渲染底座')
   })
 
   it('renders architecture and capability summaries in the standalone overview', () => {
@@ -39,7 +39,7 @@ describe('ComponentGallery', () => {
       </I18nProvider>,
     )
 
-    expect(markup).toContain('一个 Studio，两层公开 npm 包')
+    expect(markup).toContain('Studio + 应用层表格 + 表格渲染底座')
     expect(markup).toContain('@ultigrid/insight')
     expect(markup).toContain('@ultigrid/core')
     expect(markup).toContain(`<dd>${GALLERY_EXAMPLES.length}</dd>`)

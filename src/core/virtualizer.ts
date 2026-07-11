@@ -1,4 +1,4 @@
-import type { Axis } from './axis'
+import type { Axis } from './axis.js'
 
 export interface Overscan {
   /** Extra item count before the visible range. */

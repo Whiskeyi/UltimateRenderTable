@@ -87,7 +87,7 @@ export interface InsightCellProps<TRow = unknown, TValue = InsightCellValue>
   embedded?: boolean
   displayValue?: string
   visualStyle?: InsightCellVisualStyle
-  conditionalFormat?: import('./conditionalFormatting').ConditionalFormatResult
+  conditionalFormat?: import('./conditionalFormatting.js').ConditionalFormatResult
   image?: InsightCellImage
   icon?: InsightCellIcon
   iconResolver?: (icon: InsightCellIcon) => ReactNode

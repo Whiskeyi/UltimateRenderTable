@@ -1,4 +1,4 @@
-import type { InsightRowId } from './types'
+import type { InsightRowId } from './types.js'
 
 export type RowModelKind = 'flat' | 'tree'
 

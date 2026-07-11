@@ -2,7 +2,7 @@
 
 # UltiGrid
 
-A React DOM grid stack for large two-dimensional datasets. The repository has three layers: **Studio**, an **application grid**, and a **rendering grid**. Studio provides demos and live configuration, `@ultigrid/insight` provides BI-ready table semantics, and `@ultigrid/core` owns the virtualized rendering hot path.
+A React DOM grid stack for large two-dimensional datasets. The repository combines **Studio**, an **application grid**, and a **grid rendering foundation**. Studio provides demos and live configuration, `@ultigrid/insight` provides BI-ready table semantics, and `@ultigrid/core` owns the virtualized rendering hot path.
 
 UltiGrid treats `100,000 × 100,000` as a logical coordinate space. Data is read by coordinate, rows and columns are virtualized together, and DOM size follows the viewport, overscan, and frozen regions rather than the full matrix.
 
@@ -14,13 +14,13 @@ UltiGrid treats `100,000 × 100,000` as a logical coordinate space. Data is read
 | --- | --- | --- |
 | Studio | `src/studio`, `src/demo` | Interactive demos, live Props/JSON, real-source editing and preview, i18n, fullscreen, and diagnostics; not published to npm |
 | Application grid | `src/bi` → `@ultigrid/insight` | Row and column models, trees, vertical adjacent-value merging within columns, conditional formatting, custom cells, and export |
-| Rendering grid | `src/core` → `@ultigrid/core` | Axis, two-axis virtualization, four-edge freezing, rectangle merges, selection, navigation, copy, and DOM |
+| Grid rendering foundation | `src/core` → `@ultigrid/core` | Axis, two-axis virtualization, four-edge freezing, rectangle merges, selection, navigation, copy, and DOM |
 
 ```text
 Studio ──demo/config──▶ @ultigrid/insight ──domain semantics──▶ @ultigrid/core ──▶ viewport DOM
 ```
 
-Both public packages are ESM-only and support React and ReactDOM `>=18.2 <20`. Insight depends on Core, and `@ultigrid/insight/style.css` already includes the Core styles.
+The application grid and rendering foundation ship as ESM packages and support React and ReactDOM `>=18.2 <20`. Insight depends on Core, and `@ultigrid/insight/style.css` already includes the Core styles.
 
 ## Quick start
 
@@ -71,15 +71,17 @@ Install `@ultigrid/core` when you only need the coordinate protocol and direct c
 | Area | Capabilities |
 | --- | --- |
 | Large-scale rendering | Independent row and column virtualization, coordinate-based access, viewport rendering, configurable overscan |
-| Layout | Freeze on all four edges, default/sparse/getter sizes, incremental visible-content measurement, container stretch, two-axis scrolling |
+| Layout | Freeze on all four edges, default/sparse/getter sizes, visible-content measurement, container stretch, two-axis scrolling, and direct mouse/touch/keyboard column resize |
 | Merging | Core renders 2D rectangles; Insight uses `mergeAdjacent` for vertically consecutive equal values in configured columns; horizontal or arbitrary 2D merges use explicit `mergedCells` |
 | Cells | Text truncation, alignment, typography, color, images, icons, backgrounds, data bars, custom React components, shared theme color |
-| Interaction | Click and drag selection, out-of-bounds auto-scroll, Shift extension, arrow/Tab/Enter navigation, merge-aware movement, TSV copy |
+| Interaction | Click/drag selection, edge auto-scroll, Shift and keyboard navigation; native touch scrolling, tap selection, drag-handle extension, and a floating mobile copy action |
 | Data models | Row arrays, `LazyRowSource`, `FlatRowModel`, `TreeRowModel`, materialized columns, and lazy `columnCount + getColumn` columns |
 | Conditional formatting | Text, background, icons, two/three-color scales, signed data bars, priority, `stopIfTrue` |
 | Output and integration | `scrollToCell`, imperative selection/copy APIs, Excel, CSV, current-viewport PNG, data-coordinate callbacks, `localeText`, ARIA grid/treegrid |
 
 See [Capability status](docs/CAPABILITIES.md) for detailed boundaries.
+
+Mobile responsibilities stay layered: Core owns gestures, viewport coordinates, and Axis; Insight maps business columns and data coordinates; Studio owns the responsive shell, focus, and safe areas. Core `columnResize` is opt-in. Insight enables it when a header is shown and accepts `false` to disable it.
 
 ## Architecture and implementation
 
@@ -123,18 +125,20 @@ At scale, keep getters, size maps, merge configuration, and renderers referentia
 
 ## Studio interaction layer
 
-Studio demonstrates how the two npm packages compose. It is not a production runtime dependency. It has four top-level tabs:
+Studio composes the public capabilities of the application grid and rendering foundation. It is not a production runtime dependency. It has four top-level tabs:
 
 Studio defaults to the Everyday preset: `1K × 40`, row/column overscan `2 / 1`, and automatic row sizing off. `100K × 100K` is an opt-in stress preset, not a fixed-FPS promise.
 
 | Tab | Content |
 | --- | --- |
-| Overview | Presents the Studio, application-grid, and rendering-grid layers, publishing boundaries, and capability summary without occupying a grid demo |
-| Component gallery | Groups 11 interactive examples into Basic and Advanced; each edits the TSX file that implements the Demo and refreshes its preview live, covering lazy rows/columns, multi-level trees, imperative APIs, and Excel/CSV/PNG export |
+| Overview | Presents Studio, the application grid, and the grid rendering foundation, plus their boundaries and capability summary, without occupying a grid demo |
+| Component gallery | Groups 12 interactive examples into Basic and Advanced; each edits the TSX file that implements the Demo and refreshes its preview live, covering lazy rows/columns, multi-level trees, mobile touch, imperative APIs, and Excel/CSV/PNG export |
 | Business analytics | Composite dimensions and metrics; roots and branches both expand across at least depths 0/1/2; same-column merging is independent and splits at sibling boundaries |
 | Conditional formatting | Combined text, background, icon, color-scale, and data-bar rules |
 
 The gallery editor reads the same `.tsx` file as the default preview through `?raw`, then recompiles edits with a 220ms debounce. Its runtime resolves only `react`, `lucide-react`, `@ultigrid/core`, and `@ultigrid/insight`; drafts remain in the current page.
+
+On narrow screens, Studio keeps the grid stage primary, compresses the top navigation into a horizontal scroller, and moves Props into a safe-area-aware bottom sheet with a backdrop and drag handle. Mobile touch interaction is an Advanced gallery capability backed by real editable source.
 
 This editor is a local Demo tool, not a security sandbox. Do not automatically load or execute untrusted source from URLs, remote storage, or third-party shares.
 
@@ -147,8 +151,8 @@ packages/
 ├── core/          # @ultigrid/core publication entry
 └── insight/       # @ultigrid/insight publication entry
 src/
-├── core/          # rendering grid layer
-├── bi/            # application grid layer
+├── core/          # grid rendering foundation
+├── bi/            # application grid
 ├── studio/        # Studio shell and Props editor
 ├── demo/          # scenarios, component gallery, real Demo sources, and live-edit runtime
 └── i18n/          # Studio Chinese/English copy

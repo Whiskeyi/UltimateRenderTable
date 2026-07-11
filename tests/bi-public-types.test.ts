@@ -3,6 +3,10 @@ import {
   defineInsightColumn,
   type AdjacentMergeOptions,
   type InsightColumnDefinition,
+  type InsightColumnResizeChange,
+  type InsightColumnResizeOptions,
+  type InsightMobileInteractionOptions,
+  type UltiGridInsightApi,
   type UltiGridInsightProps,
 } from '../src/bi'
 
@@ -68,5 +72,45 @@ describe('UltiGridInsight public types', () => {
 
     expect(props.mergeAdjacent.columns).toHaveLength(2)
     expectTypeOf(mergeAdjacent).toMatchTypeOf<AdjacentMergeOptions<Row>>()
+  })
+
+  it('keeps mobile and column-resize callbacks in data-column coordinates', () => {
+    const columns: InsightColumnDefinition<Row>[] = [
+      defineInsightColumn<Row, string>({
+        id: 'label',
+        getValue: (row) => row.label,
+        minWidth: 96,
+        maxWidth: 320,
+      }),
+    ]
+    const columnResize = {
+      isColumnResizable: (column, index) => column.id === 'label' && index === 0,
+      minWidth: (_column, index) => 80 + index,
+      touchActivationDelay: 320,
+      getHandleAriaLabel: (column) => `Resize ${column.id}`,
+    } satisfies InsightColumnResizeOptions<Row>
+    const onColumnResize = (change: InsightColumnResizeChange) => {
+      expectTypeOf(change.columnIndex).toEqualTypeOf<number>()
+      expectTypeOf(change.columnId).toEqualTypeOf<string>()
+    }
+    const mobileInteraction = {
+      mode: 'always',
+      showCopyAction: true,
+    } satisfies InsightMobileInteractionOptions
+    const props = {
+      rows: [{ id: 1, label: 'A', score: 98 }],
+      columns,
+      mobileInteraction,
+      columnResize,
+      columnLayoutVersion: 'schema-v2',
+      onColumnResize,
+    } satisfies UltiGridInsightProps<Row>
+
+    expect(props.columnResize).toBe(columnResize)
+    expect(props.mobileInteraction.mode).toBe('always')
+  })
+
+  it('keeps the Core viewport implementation private', () => {
+    expectTypeOf<UltiGridInsightApi>().not.toHaveProperty('viewport')
   })
 })

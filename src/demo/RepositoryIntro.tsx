@@ -2,7 +2,6 @@ import {
   ArrowUpRight,
   Github,
   Layers3,
-  PackageOpen,
 } from 'lucide-react'
 import { useState } from 'react'
 import { useI18n } from '../i18n'
@@ -29,14 +28,14 @@ export function RepositoryIntro() {
       index: '02',
       name: '@ultigrid/insight',
       detail: t('intro.layer.insight'),
-      meta: t('intro.layer.package.meta'),
+      meta: t('intro.layer.insight.meta'),
     },
     {
       id: 'core' as const,
       index: '03',
       name: '@ultigrid/core',
       detail: t('intro.layer.core'),
-      meta: t('intro.layer.package.meta'),
+      meta: t('intro.layer.core.meta'),
     },
   ]
   const selectedLayer = layers.find((layer) => layer.id === activeLayer) ?? layers[0]!
@@ -60,7 +59,7 @@ export function RepositoryIntro() {
           <dl className="repository-intro__stats">
             <div><dt>{t('intro.stats.scale')}</dt><dd>10¹⁰</dd></div>
             <div><dt>{t('intro.stats.examples')}</dt><dd>{GALLERY_EXAMPLES.length}</dd></div>
-            <div><dt>{t('intro.stats.packages')}</dt><dd><PackageOpen size={17} /> 2</dd></div>
+            <div><dt>{t('intro.stats.packages')}</dt><dd><Layers3 size={17} /> 3</dd></div>
           </dl>
         </div>
       </header>

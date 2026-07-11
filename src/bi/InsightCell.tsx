@@ -5,7 +5,7 @@ import type {
   InsightCellImage,
   InsightCellProps,
   InsightCellValue,
-} from './types'
+} from './types.js'
 
 type CellCssProperties = CSSProperties & {
   '--ultigrid-insight-cell-align-x'?: string

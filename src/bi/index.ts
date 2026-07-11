@@ -1,14 +1,18 @@
-export { InsightCell } from './InsightCell'
-export { defineInsightColumn, UltiGridInsight } from './UltiGridInsight'
-export { createRowMeta, FlatRowModel, TreeRowModel } from './rowModel'
+export { InsightCell } from './InsightCell.js'
+export { defineInsightColumn, UltiGridInsight } from './UltiGridInsight.js'
+export { createRowMeta, FlatRowModel, TreeRowModel } from './rowModel.js'
 
 export type {
   AdjacentMergeColumn,
   AdjacentMergeOptions,
-} from './adjacentMerge'
+} from './adjacentMerge.js'
 export type {
   InsightColumn,
   InsightColumnDefinition,
+  InsightColumnResizeChange,
+  InsightColumnResizeOptions,
+  InsightColumnWidthConstraint,
+  InsightMobileInteractionOptions,
   InsightColumnsProps,
   InsightExportRange,
   InsightViewportSnapshot,
@@ -18,7 +22,7 @@ export type {
   UltiGridInsightApi,
   UltiGridInsightProps,
   LazyRowSource,
-} from './UltiGridInsight'
+} from './UltiGridInsight.js'
 export type {
   BackgroundConditionalRule,
   ColorScaleConditionalRule,
@@ -30,7 +34,7 @@ export type {
   DataBarConditionalRule,
   IconConditionalRule,
   TextConditionalRule,
-} from './conditionalFormatting'
+} from './conditionalFormatting.js'
 export type {
   InsightRowModel,
   FlatRowModelOptions,
@@ -39,7 +43,7 @@ export type {
   RowModelKind,
   RowModelListener,
   TreeRowModelOptions,
-} from './rowModel'
+} from './rowModel.js'
 export type {
   InsightCellComponent,
   InsightCellComponentProps,
@@ -54,4 +58,4 @@ export type {
   InsightRowId,
   HorizontalAlignment,
   VerticalAlignment,
-} from './types'
+} from './types.js'

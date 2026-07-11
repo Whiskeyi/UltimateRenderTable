@@ -41,6 +41,15 @@ export function ComponentGallery() {
     setLiveWorkbenchMounted(false)
   }, [activeId])
 
+  useEffect(() => {
+    const activeIndex = GALLERY_EXAMPLES.findIndex((example) => example.id === activeId)
+    if (activeIndex < 0) return
+    tabRefs.current[activeIndex]?.scrollIntoView({
+      block: 'nearest',
+      inline: 'center',
+    })
+  }, [activeId])
+
   const handleTabKeyDown = (
     event: ReactKeyboardEvent<HTMLButtonElement>,
     index: number,
@@ -135,6 +144,7 @@ export function ComponentGallery() {
                 editorOpen={editorOpen}
                 example={active}
                 locale={locale}
+                onRequestClose={() => setEditorOpen(false)}
                 t={t}
               />
             </Suspense>

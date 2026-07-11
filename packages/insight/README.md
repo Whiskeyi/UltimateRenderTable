@@ -1,6 +1,6 @@
 # @ultigrid/insight
 
-The BI-ready application grid built on `@ultigrid/core`. Insight adds typed row and column models, trees, vertical adjacent-value merging within columns, conditional formatting, layered custom cells, localization, and client-side export while retaining the virtualized Core viewport.
+The BI-ready application grid built on the `@ultigrid/core` rendering foundation. Insight adds typed row and column models, trees, vertical adjacent-value merging within columns, conditional formatting, layered custom cells, localization, and client-side export while retaining the virtualized Core viewport.
 
 > Status: **0.1.0 / Alpha**. ESM-only; React and ReactDOM `>=18.2 <20` are peer dependencies.
 
@@ -72,9 +72,13 @@ export function SalesTable() {
 | Adjacent merging | `mergeAdjacent?: false \| AdjacentMergeOptions<TRow>`; `AdjacentMergeColumn<TRow>` selects columns whose vertically consecutive equal values become single-column Core rectangles |
 | Conditional formatting | Text, background, icon, two/three-color scale, signed data bar, priority, `stopIfTrue` |
 | Custom cells | Alignment, typography, colors, images, icons, background layer, `component`, `renderContent`, `exportValue` |
-| Layout and interaction | Core sizing, fit, four-edge freezing, selection, navigation, copy, viewport callbacks |
+| Layout and interaction | Core sizing, fit, four-edge freezing, direct column resize, selection, navigation, touch-first selection and copy, viewport callbacks |
 | Theme | `themeColor` is shared with Core selection, focus, and tree interaction accents |
 | Localization | English defaults with partial `localeText` overrides; business content stays caller-controlled |
+
+Insight maps business columns and zero-based data coordinates onto Core gestures, selection bounds, and Axis updates. With a header shown, `columnResize` is enabled by default and accepts `false` to disable it; row-number chrome is excluded from selection, copy, resize callbacks, and column constraints. Touch waits for a short long press before resizing so horizontal pan remains native.
+
+`columnWidths` overrides `column.width` and is the controlled persistence path for `onColumnResize`; persisting `phase: "end"` does not clear the live manual width or re-enter stretch. Excel export reads the current effective Core width, including stretch and manual resize. Increment `columnLayoutVersion` after mutating a stable lazy-column schema or when an external layout must authoritatively replace user widths; it re-reads lazy columns and clears measured/manual layout state. Ordinary `contentVersion` changes keep user widths intact.
 
 Adjacent-value equality is application semantics: Insight derives vertical same-column ranges through `mergeAdjacent`, while Core only indexes and renders rectangles. Horizontal or arbitrary 2D ranges use explicit data-coordinate `mergedCells`.
 
@@ -100,7 +104,7 @@ Both paths retain `.ultigrid-insight-cell` plus `data-row-id` / `data-column-id`
 
 All public coordinates are zero-based data coordinates. Headers and row numbers are excluded from selection, viewport callbacks, merge ranges, scrolling, copy, and export ranges.
 
-`UltiGridInsightApi` exposes `scrollToCell`, `getSelection`, `copySelection`, `exportExcel`, `exportCsv`, and `exportImage`.
+`UltiGridInsightApi` exposes `scrollToCell`, `getSelection`, `copySelection`, `exportExcel`, `exportCsv`, and `exportImage`; the nested Core viewport remains an implementation detail.
 
 Only these package paths are supported:
 

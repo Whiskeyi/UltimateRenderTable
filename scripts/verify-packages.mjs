@@ -1,4 +1,5 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -40,6 +41,16 @@ const insightCss = readFileSync(join(insightRoot, 'style.css'), 'utf8')
 if (!insightCss.includes('.ultigrid-root') || !insightCss.includes('.ultigrid-insight')) {
   throw new Error('@ultigrid/insight: style.css must include both core and insight styles')
 }
+
+execFileSync(
+  process.execPath,
+  [
+    join(root, 'node_modules', 'typescript', 'bin', 'tsc'),
+    '--project',
+    join(root, 'scripts', 'fixtures', 'package-nodenext-consumer', 'tsconfig.json'),
+  ],
+  { cwd: root, stdio: 'inherit' },
+)
 
 console.log('Package contracts verified: @ultigrid/core, @ultigrid/insight')
 

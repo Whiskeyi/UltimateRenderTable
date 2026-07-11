@@ -1,4 +1,4 @@
-export { UltiGridViewport } from './UltiGridViewport'
+export { UltiGridViewport } from './UltiGridViewport.js'
 export type {
   ApiRef,
   AutoSizeOptions,
@@ -8,13 +8,21 @@ export type {
   CellRenderContext,
   CellRenderer,
   CellSource,
+  ColumnResizeChange,
+  ColumnResizeInput,
+  ColumnResizeOptions,
+  ColumnResizePhase,
+  ColumnWidthConstraint,
   FitColumnsMode,
   FrozenEdges,
   MergedCellRange,
+  MobileInteractionLabels,
+  MobileInteractionMode,
+  MobileInteractionOptions,
   OverscanOptions,
   TableCell,
   UltiGridViewportApi,
   UltiGridViewportProps,
   ViewportCellAlign,
   ViewportSnapshot,
-} from './viewportTypes'
+} from './viewportTypes.js'

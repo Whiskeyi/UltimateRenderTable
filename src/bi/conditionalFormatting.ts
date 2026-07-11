@@ -2,7 +2,7 @@ import type {
   InsightCellIcon,
   InsightCellTextStyle,
   InsightCellContext,
-} from './types'
+} from './types.js'
 
 export type ConditionalOperator =
   | 'always'

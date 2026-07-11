@@ -23,33 +23,41 @@ import {
   type AutoSizeOptions,
   type CellAddress,
   type CellRange,
+  type ColumnResizeChange as CoreColumnResizeChange,
+  type ColumnResizeInput,
+  type ColumnResizeOptions,
+  type ColumnResizePhase,
   type FitColumnsMode,
   type FrozenEdges,
   type MergedCellRange,
+  type MobileInteractionOptions,
   type OverscanOptions,
   type UltiGridViewportApi,
   type ViewportCellAlign,
   type ViewportSnapshot,
 } from '@ultigrid/core'
-import { InsightCell } from './InsightCell'
+import { InsightCell } from './InsightCell.js'
 import {
   compileConditionalFormatting,
   type CompiledConditionalFormatter,
   type ConditionalFormatRule,
-} from './conditionalFormatting'
-import { downloadBlob, exportTableToExcel } from './excelExport'
-import { exportTableToImage } from './imageExport'
+} from './conditionalFormatting.js'
+import { downloadBlob, exportTableToExcel } from './excelExport.js'
+import { exportTableToImage } from './imageExport.js'
+import {
+  buildInsightViewportColumnWidths,
+  resolveInsightColumnWidth,
+} from './columnLayout.js'
 import {
   dataAddressToViewport,
-  dataRangeToViewport,
-  viewportRangeToData,
   viewportSnapshotToData,
-} from './coordinates'
+} from './coordinates.js'
+import { useInsightSelectionAdapter } from './interactionAdapter.js'
 import {
   buildAdjacentMerges,
   type AdjacentMergeOptions,
-} from './adjacentMerge'
-import type { InsightRowModel, RowMeta } from './rowModel'
+} from './adjacentMerge.js'
+import type { InsightRowModel, RowMeta } from './rowModel.js'
 import type {
   InsightCellIcon,
   InsightCellImage,
@@ -59,7 +67,7 @@ import type {
   InsightCellContext,
   InsightCellValue,
   InsightRowId,
-} from './types'
+} from './types.js'
 
 export interface InsightColumn<TRow, TValue = InsightCellValue> {
   id: string
@@ -67,6 +75,12 @@ export interface InsightColumn<TRow, TValue = InsightCellValue> {
   headerText?: string
   /** Applied automatically for materialized columns; lazy sources should use columnWidths/getColumnWidth. */
   width?: number
+  /** Excludes this column from direct header resizing when false. */
+  resizable?: boolean
+  /** Per-column resize floor in CSS pixels. */
+  minWidth?: number
+  /** Per-column resize ceiling in CSS pixels. */
+  maxWidth?: number
   getValue: (row: TRow, rowIndex: number) => TValue
   formatValue?: (value: TValue, row: TRow, rowIndex: number) => string
   visualStyle?: InsightCellVisualStyle | ((context: InsightCellContext<TRow, TValue>) => InsightCellVisualStyle)
@@ -82,6 +96,34 @@ export interface InsightColumn<TRow, TValue = InsightCellValue> {
 /** A heterogeneous column slot; each column may keep its own TValue through defineInsightColumn. */
 export type InsightColumnDefinition<TRow> = InsightColumn<TRow, any>
 
+export type InsightColumnWidthConstraint<TRow> = number | ((
+  column: InsightColumnDefinition<TRow>,
+  columnIndex: number,
+) => number)
+
+export interface InsightColumnResizeOptions<TRow> {
+  isColumnResizable?: (column: InsightColumnDefinition<TRow>, columnIndex: number) => boolean
+  minWidth?: InsightColumnWidthConstraint<TRow>
+  maxWidth?: InsightColumnWidthConstraint<TRow>
+  keyboardStep?: number
+  /** Touch requires a stationary long press before resizing. Defaults to 280ms; use 0 for immediate activation. */
+  touchActivationDelay?: number
+  getHandleAriaLabel?: (column: InsightColumnDefinition<TRow>, columnIndex: number) => string
+}
+
+export interface InsightColumnResizeChange {
+  /** Zero-based data-column coordinate; row-number chrome is excluded. */
+  columnIndex: number
+  columnId: string
+  width: number
+  previousWidth: number
+  phase: ColumnResizePhase
+  input: ColumnResizeInput
+}
+
+/** Touch interaction configuration exposed by the application-grid package. */
+export type InsightMobileInteractionOptions = MobileInteractionOptions
+
 export interface LazyRowSource<TRow> {
   rowCount: number
   getRow: (index: number) => TRow
@@ -90,7 +132,6 @@ export interface LazyRowSource<TRow> {
 }
 
 export interface UltiGridInsightApi {
-  readonly viewport: UltiGridViewportApi | null
   scrollToCell(address: CellAddress, align?: ViewportCellAlign): void
   copySelection(): Promise<string>
   getSelection(): CellRange | null
@@ -119,6 +160,12 @@ export interface UltiGridInsightLocaleText {
   excelRowLimit: string
   exportCellLimitInvalid: string
   exportRangeTooLarge: (count: string, limit: string) => string
+  copySelection: string
+  copySuccess: string
+  copyError: string
+  selectionHandle: string
+  selectionActions: string
+  resizeColumn: (column: string) => string
 }
 
 export type InsightRowsProps<TRow> =
@@ -171,6 +218,8 @@ export interface UltiGridInsightBaseProps<TRow> {
   autoSize?: boolean | AutoSizeOptions
   /** Increment after mutating data or column styles behind stable source/getter references. */
   contentVersion?: string | number
+  /** Re-reads a stable lazy-column schema and resets measured/manual widths. */
+  columnLayoutVersion?: string | number
   showHeader?: boolean
   showRowNumbers?: boolean
   stripedRows?: boolean
@@ -182,6 +231,11 @@ export interface UltiGridInsightBaseProps<TRow> {
   selection?: CellRange | null
   onSelectionChange?: (range: CellRange | null) => void
   onViewportChange?: (snapshot: InsightViewportSnapshot) => void
+  /** Touch-first pan, tap selection, range handle, and safe-area copy affordances. */
+  mobileInteraction?: boolean | InsightMobileInteractionOptions
+  /** Direct header resizing in data-column coordinates. Enabled when a header is shown. */
+  columnResize?: boolean | InsightColumnResizeOptions<TRow>
+  onColumnResize?: (change: InsightColumnResizeChange) => void
   iconResolver?: (icon: InsightCellIcon) => ReactNode
   /** Client-side materialization guard. Use a backend stream for larger exports. */
   exportCellLimit?: number
@@ -260,6 +314,12 @@ const DEFAULT_LOCALE_TEXT: UltiGridInsightLocaleText = {
   exportRangeTooLarge: (count, limit) => (
     `The export contains ${count} cells, above the client limit of ${limit}. Use a smaller range or a streaming backend.`
   ),
+  copySelection: 'Copy',
+  copySuccess: 'Copied',
+  copyError: 'Copy failed',
+  selectionHandle: 'Drag to extend selection',
+  selectionActions: 'Selection actions',
+  resizeColumn: (column) => `Resize column ${column}`,
 }
 
 export function UltiGridInsight<TRow>(props: UltiGridInsightProps<TRow>) {
@@ -284,6 +344,7 @@ export function UltiGridInsight<TRow>(props: UltiGridInsightProps<TRow>) {
     fitColumns = 'stretch',
     autoSize,
     contentVersion,
+    columnLayoutVersion,
     showHeader = true,
     showRowNumbers = true,
     stripedRows = false,
@@ -294,6 +355,9 @@ export function UltiGridInsight<TRow>(props: UltiGridInsightProps<TRow>) {
     selection,
     onSelectionChange,
     onViewportChange,
+    mobileInteraction,
+    columnResize = true,
+    onColumnResize,
     iconResolver = defaultIconResolver,
     exportCellLimit = DEFAULT_EXPORT_CELL_LIMIT,
     apiRef,
@@ -309,6 +373,22 @@ export function UltiGridInsight<TRow>(props: UltiGridInsightProps<TRow>) {
     () => ({ ...DEFAULT_LOCALE_TEXT, ...localeText }),
     [localeText],
   )
+  const effectiveMobileInteraction = useMemo<boolean | MobileInteractionOptions>(() => {
+    if (mobileInteraction === false) return false
+    const labels = {
+      copySelection: messages.copySelection,
+      copySuccess: messages.copySuccess,
+      copyError: messages.copyError,
+      selectionHandle: messages.selectionHandle,
+      selectionActions: messages.selectionActions,
+    }
+    if (mobileInteraction === true) return { mode: 'always', labels }
+    return {
+      ...(mobileInteraction ?? {}),
+      mode: mobileInteraction?.mode ?? 'auto',
+      labels: { ...labels, ...mobileInteraction?.labels },
+    }
+  }, [messages, mobileInteraction])
 
   const shellRef = useRef<HTMLDivElement>(null)
   const viewportApiRef = useRef<UltiGridViewportApi | null>(null)
@@ -316,7 +396,7 @@ export function UltiGridInsight<TRow>(props: UltiGridInsightProps<TRow>) {
   const activeConditionalRules = (conditionalRules ?? EMPTY_CONDITIONAL_RULES) as readonly ConditionalFormatRule<TRow, InsightCellValue>[]
   const columnCache = useMemo(
     () => new Map<number, InsightColumn<TRow>>(),
-    [columns, getLazyColumn],
+    [columns, getLazyColumn, columnLayoutVersion],
   )
   const formatterCache = useMemo(
     () => new WeakMap<InsightColumn<TRow>, CompiledConditionalFormatter<TRow, InsightCellValue>>(),
@@ -344,26 +424,35 @@ export function UltiGridInsight<TRow>(props: UltiGridInsightProps<TRow>) {
   const rowNumberOffset = showRowNumbers ? 1 : 0
   const totalRows = dataRowCount + headerOffset
   const totalColumns = dataColumnCount + rowNumberOffset
-  const viewportSelection = useMemo(
-    () => selection === undefined
-      ? undefined
-      : selection === null
-        ? null
-        : dataRangeToViewport(selection, headerOffset, rowNumberOffset),
-    [selection, headerOffset, rowNumberOffset],
-  )
-  const handleSelectionChange = useMemo(
-    () => onSelectionChange
-      ? (range: CellRange | null) => onSelectionChange(viewportRangeToData(
-          range,
-          headerOffset,
-          rowNumberOffset,
-          dataRowCount,
-          dataColumnCount,
-        ))
-      : undefined,
-    [onSelectionChange, headerOffset, rowNumberOffset, dataRowCount, dataColumnCount],
-  )
+  const viewportSelectionBounds = useMemo<CellRange | null>(() => (
+    dataRowCount > 0 && dataColumnCount > 0
+      ? {
+          rowStart: headerOffset,
+          rowEnd: totalRows - 1,
+          columnStart: rowNumberOffset,
+          columnEnd: totalColumns - 1,
+        }
+      : null
+  ), [
+    dataRowCount,
+    dataColumnCount,
+    headerOffset,
+    rowNumberOffset,
+    totalRows,
+    totalColumns,
+  ])
+  const {
+    dataSelection,
+    viewportSelection,
+    handleViewportSelectionChange,
+  } = useInsightSelectionAdapter({
+    selection,
+    onSelectionChange,
+    headerOffset,
+    rowNumberOffset,
+    rowCount: dataRowCount,
+    columnCount: dataColumnCount,
+  })
   const handleViewportChange = useMemo(
     () => onViewportChange
       ? (snapshot: ViewportSnapshot) => onViewportChange(viewportSnapshotToData(
@@ -408,6 +497,74 @@ export function UltiGridInsight<TRow>(props: UltiGridInsightProps<TRow>) {
     trimOldest(columnCache, 2_048)
     return column
   }, [columns, getLazyColumn, columnCache])
+
+  const effectiveColumnResize = useMemo<boolean | ColumnResizeOptions>(() => {
+    if (!showHeader || columnResize === false) return false
+    const options = columnResize === true ? undefined : columnResize
+    const dataColumn = (viewportColumn: number) => viewportColumn - rowNumberOffset
+    const resolveConstraint = (
+      value: InsightColumnWidthConstraint<TRow> | undefined,
+      viewportColumn: number,
+      fallback: number | undefined,
+    ) => {
+      const index = dataColumn(viewportColumn)
+      if (index < 0 || index >= dataColumnCount) return fallback ?? defaultColumnWidth
+      const column = getColumn(index)
+      return typeof value === 'function' ? value(column, index) : value ?? fallback ?? defaultColumnWidth
+    }
+    return {
+      headerRows: [0],
+      isColumnResizable: (viewportColumn) => {
+        const index = dataColumn(viewportColumn)
+        if (index < 0 || index >= dataColumnCount) return false
+        const column = getColumn(index)
+        return column.resizable !== false && (options?.isColumnResizable?.(column, index) ?? true)
+      },
+      minWidth: (viewportColumn) => {
+        const index = dataColumn(viewportColumn)
+        const column = index >= 0 && index < dataColumnCount ? getColumn(index) : undefined
+        return column?.minWidth
+          ?? resolveConstraint(options?.minWidth, viewportColumn, 48)
+      },
+      maxWidth: (viewportColumn) => {
+        const index = dataColumn(viewportColumn)
+        const column = index >= 0 && index < dataColumnCount ? getColumn(index) : undefined
+        return column?.maxWidth
+          ?? resolveConstraint(options?.maxWidth, viewportColumn, 800)
+      },
+      keyboardStep: options?.keyboardStep,
+      touchActivationDelay: options?.touchActivationDelay,
+      getHandleAriaLabel: (viewportColumn) => {
+        const index = dataColumn(viewportColumn)
+        if (index < 0 || index >= dataColumnCount) return messages.resizeColumn(String(viewportColumn + 1))
+        const column = getColumn(index)
+        return options?.getHandleAriaLabel?.(column, index)
+          ?? messages.resizeColumn(column.headerText ?? String(index + 1))
+      },
+    }
+  }, [
+    columnResize,
+    dataColumnCount,
+    defaultColumnWidth,
+    getColumn,
+    messages,
+    rowNumberOffset,
+    showHeader,
+  ])
+
+  const handleColumnResize = useCallback((change: CoreColumnResizeChange) => {
+    const columnIndex = change.viewportColumn - rowNumberOffset
+    if (columnIndex < 0 || columnIndex >= dataColumnCount) return
+    if (!onColumnResize) return
+    onColumnResize({
+      columnIndex,
+      columnId: getColumn(columnIndex).id,
+      width: change.width,
+      previousWidth: change.previousWidth,
+      phase: change.phase,
+      input: change.input,
+    })
+  }, [dataColumnCount, getColumn, onColumnResize, rowNumberOffset])
 
   const globalFormatter = useMemo(
     () => compileConditionalFormatting(activeConditionalRules),
@@ -459,24 +616,20 @@ export function UltiGridInsight<TRow>(props: UltiGridInsightProps<TRow>) {
   })), [effectiveMergedCells, headerOffset, rowNumberOffset])
 
   const effectiveColumnWidths = useMemo(() => {
-    const result = new Map<number, number>()
-    if (showRowNumbers) result.set(0, 54)
-    if (columnWidths) {
-      for (const [index, width] of columnWidths) result.set(index + rowNumberOffset, width)
-    }
-    if (columns) {
-      for (let index = 0; index < columns.length; index += 1) {
-        const width = columns[index]?.width
-        if (width !== undefined) result.set(index + rowNumberOffset, width)
-      }
-    }
-    return result
-  }, [showRowNumbers, columnWidths, columns, rowNumberOffset])
+    return buildInsightViewportColumnWidths(columns, columnWidths, rowNumberOffset)
+  }, [
+    showRowNumbers,
+    columnWidths,
+    columns,
+    columnLayoutVersion,
+    getLazyColumn,
+    rowNumberOffset,
+  ])
   const gridColumnWidthGetter = useCallback((gridColumn: number) => {
     if (!getLazyColumnWidth) return undefined
     const dataColumn = gridColumn - rowNumberOffset
     return dataColumn >= 0 ? getLazyColumnWidth(dataColumn) : undefined
-  }, [getLazyColumnWidth, rowNumberOffset])
+  }, [columnLayoutVersion, getLazyColumnWidth, rowNumberOffset])
 
   const effectiveRowHeights = useMemo(() => {
     if (!showHeader && !rowHeights) return undefined
@@ -742,9 +895,10 @@ export function UltiGridInsight<TRow>(props: UltiGridInsightProps<TRow>) {
         return {
           id: column.id,
           header: column.headerText ?? (typeof column.header === 'string' ? column.header : column.id),
-          width: Math.max(4, Math.round(
-            (columnWidths?.get(index) ?? column.width ?? defaultColumnWidth) / 7,
-          )),
+          width: Math.max(4, Math.round((
+            viewportApiRef.current?.getColumnWidth(index + rowNumberOffset)
+              ?? resolveInsightColumnWidth(index, columnWidths, column.width, defaultColumnWidth)
+          ) / 7)),
           getValue: (row: TRow, localRowIndex: number) => {
             const rowIndex = localRowIndex + range.rowStart
             const value = column.getValue(row, rowIndex)
@@ -778,6 +932,7 @@ export function UltiGridInsight<TRow>(props: UltiGridInsightProps<TRow>) {
     exportCellLimit,
     columnWidths,
     defaultColumnWidth,
+    rowNumberOffset,
     messages,
   ])
 
@@ -822,7 +977,6 @@ export function UltiGridInsight<TRow>(props: UltiGridInsightProps<TRow>) {
   useEffect(() => {
     if (!apiRef) return
     const api: UltiGridInsightApi = {
-      get viewport() { return viewportApiRef.current },
       scrollToCell(address, align) {
         viewportApiRef.current?.scrollToCell(
           dataAddressToViewport(address, headerOffset, rowNumberOffset),
@@ -833,13 +987,7 @@ export function UltiGridInsight<TRow>(props: UltiGridInsightProps<TRow>) {
         return viewportApiRef.current?.copySelection() ?? Promise.resolve('')
       },
       getSelection() {
-        return viewportRangeToData(
-          viewportApiRef.current?.getSelection() ?? null,
-          headerOffset,
-          rowNumberOffset,
-          dataRowCount,
-          dataColumnCount,
-        )
+        return dataSelection
       },
       exportExcel,
       exportImage,
@@ -858,6 +1006,7 @@ export function UltiGridInsight<TRow>(props: UltiGridInsightProps<TRow>) {
     exportExcel,
     exportImage,
     exportCsv,
+    dataSelection,
   ])
 
   const rootClassName = [
@@ -889,9 +1038,14 @@ export function UltiGridInsight<TRow>(props: UltiGridInsightProps<TRow>) {
         fitColumns={fitColumns}
         autoSize={autoSize}
         contentVersion={contentVersion ?? (rowModel ? modelVersion : undefined)}
+        columnLayoutVersion={columnLayoutVersion}
+        selectionBounds={viewportSelectionBounds}
         selection={viewportSelection}
-        onSelectionChange={handleSelectionChange}
+        onSelectionChange={handleViewportSelectionChange}
         onViewportChange={handleViewportChange}
+        mobileInteraction={effectiveMobileInteraction}
+        columnResize={effectiveColumnResize}
+        onColumnResize={onColumnResize ? handleColumnResize : undefined}
         apiRef={viewportApiRef}
         themeColor={themeColor}
         ariaLabel={ariaLabel}

@@ -1,4 +1,4 @@
-import { downloadBlob } from './excelExport'
+import { downloadBlob } from './excelExport.js'
 
 export interface TableImageExportOptions {
   fileName?: string

@@ -11,6 +11,8 @@ import LazyDataExample from './examples/LazyDataExample'
 import lazyDataSource from './examples/LazyDataExample.tsx?raw'
 import MergingExample from './examples/MergingExample'
 import mergingSource from './examples/MergingExample.tsx?raw'
+import MobileInteractionExample from './examples/MobileInteractionExample'
+import mobileInteractionSource from './examples/MobileInteractionExample.tsx?raw'
 import RendererExample from './examples/RendererExample'
 import rendererSource from './examples/RendererExample.tsx?raw'
 import SelectionExample from './examples/SelectionExample'
@@ -28,6 +30,7 @@ export type GalleryExampleId =
   | 'frozen'
   | 'sizing'
   | 'merging'
+  | 'mobile'
   | 'selection'
   | 'renderer'
   | 'tree'
@@ -136,6 +139,15 @@ export const GALLERY_EXAMPLES: readonly GalleryExampleDefinition[] = [
     detailKey: 'gallery.api.detail',
     component: ImperativeApiExample,
     source: imperativeApiSource,
+  },
+  {
+    id: 'mobile',
+    level: 'advanced',
+    packageName: '@ultigrid/core',
+    titleKey: 'gallery.mobile.title',
+    detailKey: 'gallery.mobile.detail',
+    component: MobileInteractionExample,
+    source: mobileInteractionSource,
   },
   {
     id: 'export',

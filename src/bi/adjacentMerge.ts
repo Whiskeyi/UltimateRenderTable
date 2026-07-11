@@ -1,5 +1,5 @@
 import type { MergedCellRange } from '@ultigrid/core'
-import type { RowMeta } from './rowModel'
+import type { RowMeta } from './rowModel.js'
 
 export interface AdjacentMergeColumn<TRow> {
   /** Zero-based data-column coordinate. */

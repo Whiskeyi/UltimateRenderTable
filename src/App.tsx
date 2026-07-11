@@ -229,6 +229,12 @@ export function App() {
     excelRowLimit: t('table.excelRows'),
     exportCellLimitInvalid: t('table.exportLimitInvalid'),
     exportRangeTooLarge: (count, limit) => t('table.exportTooLarge', { count, limit }),
+    copySelection: t('table.copySelection'),
+    copySuccess: t('table.copySuccess'),
+    copyError: t('table.copyError'),
+    selectionHandle: t('table.selectionHandle'),
+    selectionActions: t('table.selectionActions'),
+    resizeColumn: (column) => t('table.resizeColumn', { column }),
   }), [t])
 
   const renderStage = useCallback(({ config: stageConfig }: { config: StudioTableConfig }) => {
