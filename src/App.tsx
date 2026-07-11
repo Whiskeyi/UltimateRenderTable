@@ -29,6 +29,7 @@ import {
   type StudioTableConfig,
 } from './studio'
 import { ComponentGallery } from './demo/ComponentGallery'
+import { RepositoryIntro } from './demo/RepositoryIntro'
 import {
   createDemoColumnGetter,
   createDemoRowSource,
@@ -231,6 +232,9 @@ export function App() {
   }), [t])
 
   const renderStage = useCallback(({ config: stageConfig }: { config: StudioTableConfig }) => {
+    if (stageConfig.scenario === 'intro') {
+      return <RepositoryIntro />
+    }
     if (stageConfig.scenario === 'gallery') {
       return <ComponentGallery />
     }

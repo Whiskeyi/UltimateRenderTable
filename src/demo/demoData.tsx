@@ -50,6 +50,7 @@ const AVATARS = [
 ]
 
 const COLUMN_WIDTHS: Record<StudioScenario, ReadonlyMap<number, number>> = {
+  intro: new Map(),
   gallery: new Map(),
   analysis: new Map([
     [0, 200], [1, 160], [2, 148], [3, 108], [4, 136],

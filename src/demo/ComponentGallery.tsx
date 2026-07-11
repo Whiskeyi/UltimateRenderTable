@@ -4,9 +4,7 @@ import {
   ChevronRight,
   Github,
   Keyboard,
-  Layers3,
   MousePointer2,
-  PackageOpen,
 } from 'lucide-react'
 import {
   useMemo,
@@ -115,34 +113,6 @@ export function ComponentGallery() {
         role="tabpanel"
         aria-labelledby={`component-gallery-tab-${active.id}`}
       >
-        <section className="component-gallery__overview" aria-label={t('gallery.summary.title')}>
-          <div className="component-gallery__overview-copy">
-            <span><Layers3 size={14} /> {t('gallery.summary.eyebrow')}</span>
-            <strong>{t('gallery.summary.title')}</strong>
-            <p>{t('gallery.summary.detail')}</p>
-          </div>
-          <ol className="component-gallery__layers">
-            <li><span>Studio</span><small>{t('gallery.summary.studio')}</small></li>
-            <li><span>@ultigrid/insight</span><small>{t('gallery.summary.insight')}</small></li>
-            <li><span>@ultigrid/core</span><small>{t('gallery.summary.core')}</small></li>
-          </ol>
-          <dl className="component-gallery__overview-stats">
-            <div><dt>{t('gallery.summary.scale')}</dt><dd>10¹⁰</dd></div>
-            <div><dt>{t('gallery.summary.examples')}</dt><dd>{GALLERY_EXAMPLES.length}</dd></div>
-            <div><dt>{t('gallery.summary.packages')}</dt><dd><PackageOpen size={15} /> 2</dd></div>
-          </dl>
-          <dl className="component-gallery__capabilities">
-            <div>
-              <dt>{t('gallery.group.basic')}</dt>
-              <dd>{t('gallery.capabilities.basic')}</dd>
-            </div>
-            <div>
-              <dt>{t('gallery.group.advanced')}</dt>
-              <dd>{t('gallery.capabilities.advanced')}</dd>
-            </div>
-          </dl>
-        </section>
-
         <header className="component-gallery__stage-head">
           <div>
             <span className="component-gallery__package">{active.packageName}</span>

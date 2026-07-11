@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { ComponentGallery, GALLERY_SOURCE_URLS } from '../src/demo/ComponentGallery'
+import { RepositoryIntro } from '../src/demo/RepositoryIntro'
 import { GALLERY_EXAMPLES, type GalleryExampleId } from '../src/demo/galleryExamples'
 import galleryExampleSource from '../src/demo/galleryExamples.tsx?raw'
 import { I18nProvider } from '../src/i18n'
@@ -34,7 +35,7 @@ describe('ComponentGallery', () => {
     }
   })
 
-  it('renders a new-tab GitHub source link and the capability inventory', () => {
+  it('renders a new-tab GitHub source link without an overview row above the grid', () => {
     const markup = renderToStaticMarkup(
       <I18nProvider>
         <ComponentGallery />
@@ -44,6 +45,21 @@ describe('ComponentGallery', () => {
     expect(markup).toContain(`href="${GALLERY_SOURCE_URLS.virtualization}"`)
     expect(markup).toContain('target="_blank"')
     expect(markup).toContain('rel="noopener noreferrer"')
+    expect(markup).not.toContain('component-gallery__overview')
+    expect(markup).not.toContain('一个 Studio，两层公开 npm 包')
+  })
+
+  it('renders architecture and capability summaries in the standalone overview', () => {
+    const markup = renderToStaticMarkup(
+      <I18nProvider>
+        <RepositoryIntro />
+      </I18nProvider>,
+    )
+
+    expect(markup).toContain('一个 Studio，两层公开 npm 包')
+    expect(markup).toContain('@ultigrid/insight')
+    expect(markup).toContain('@ultigrid/core')
+    expect(markup).toContain(`<dd>${GALLERY_EXAMPLES.length}</dd>`)
     expect(markup).toContain('拖选、越界滚动与 Shift 扩选')
     expect(markup).toContain('任意深度异步树')
   })

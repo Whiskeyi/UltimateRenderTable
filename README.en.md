@@ -122,11 +122,12 @@ At scale, keep getters, size maps, merge configuration, and renderers referentia
 
 ## Studio interaction layer
 
-Studio demonstrates how the two npm packages compose. It is not a production runtime dependency. It has three top-level tabs:
+Studio demonstrates how the two npm packages compose. It is not a production runtime dependency. It has four top-level tabs:
 
 | Tab | Content |
 | --- | --- |
-| Component gallery | Includes the three-layer architecture and key-capability summary; 11 interactive examples are grouped into Basic and Advanced, covering lazy rows/columns, multi-level trees, imperative APIs, and Excel/CSV/PNG export, each with source |
+| Overview | Presents the Studio, application-grid, and rendering-grid layers, publishing boundaries, and capability summary without occupying a grid demo |
+| Component gallery | Groups 11 interactive examples into Basic and Advanced, covering lazy rows/columns, multi-level trees, imperative APIs, and Excel/CSV/PNG export, each with source |
 | Business analytics | Composite dimensions and metrics; roots and branches both expand across at least depths 0/1/2; same-column merging is independent and splits at sibling boundaries |
 | Conditional formatting | Combined text, background, icon, color-scale, and data-bar rules |
 
