@@ -4,6 +4,15 @@
   "description": "BI-ready application grid built on @ultigrid/core.",
   "license": "MIT",
   "keywords": ["react", "bi", "data-grid", "conditional-formatting", "export"],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Whiskeyi/UltimateRenderTable.git",
+    "directory": "packages/insight"
+  },
+  "homepage": "https://github.com/Whiskeyi/UltimateRenderTable#readme",
+  "bugs": {
+    "url": "https://github.com/Whiskeyi/UltimateRenderTable/issues"
+  },
   "type": "module",
   "sideEffects": [
     "./dist/style.css"
@@ -37,6 +46,8 @@
     "react-dom": ">=18.2 <20"
   },
   "publishConfig": {
-    "access": "public"
+    "access": "public",
+    "registry": "https://registry.npmjs.org/",
+    "provenance": true
   }
 }

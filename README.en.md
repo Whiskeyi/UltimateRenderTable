@@ -164,9 +164,22 @@ npm run dev
 npm test
 npm run build
 npm run verify:packages
+npm run pack:packages
 ```
 
 The root is a private npm workspace; the two `packages/*` directories are the public publication boundaries.
+
+## npm publishing
+
+`.github/workflows/publish.yml` runs build, test, and package-tarball checks on every `main` commit or manual `workflow_dispatch` (use `npm run pack:packages` for the matching local check). It queries existing npm versions and publishes only a `package.json` version that is not yet present, in `@ultigrid/core` → `@ultigrid/insight` order. Ordinary commits without a version bump skip publishing safely.
+
+First publication:
+
+1. Create or own the `@ultigrid` npm scope.
+2. Create a granular access token with **Packages and scopes: Read and write** and **Bypass 2FA** enabled, then store it as the GitHub Actions Secret `NPM_TOKEN`.
+3. Run the publishing workflow through `workflow_dispatch`.
+
+After the first release, configure npm Trusted Publisher for both packages with owner `Whiskeyi`, repository `UltimateRenderTable`, and workflow `publish.yml`. Then set the repository Actions variable `NPM_USE_OIDC=true`; after an OIDC release succeeds, remove `NPM_TOKEN`.
 
 ## Roadmap
 

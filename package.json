@@ -14,6 +14,8 @@
     "build:packages": "npm run build:core && npm run build:insight",
     "build:core": "vite build --config packages/core/vite.config.ts && tsc -p packages/core/tsconfig.build.json",
     "build:insight": "vite build --config packages/insight/vite.config.ts && tsc -p packages/insight/tsconfig.build.json",
+    "pack:packages": "node scripts/pack-packages.mjs",
+    "publish:packages": "node scripts/publish-packages.mjs",
     "verify:packages": "node scripts/verify-packages.mjs",
     "preview": "vite preview",
     "test": "vitest run",

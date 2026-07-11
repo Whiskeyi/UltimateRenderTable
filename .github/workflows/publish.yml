@@ -1,0 +1,79 @@
+name: Publish npm packages
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: npm-publish-${{ github.repository }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Verify, pack, and publish
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+      - name: Build packages
+        run: npm run build:packages
+
+      - name: Verify packages
+        run: npm run verify:packages
+
+      - name: Pack packages
+        run: npm run pack:packages
+
+      - name: Upload package artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: package-artifacts
+          path: package-artifacts/
+          if-no-files-found: error
+
+      - name: Check npm authentication
+        id: npm_auth
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_USE_OIDC: ${{ vars.NPM_USE_OIDC }}
+        run: |
+          if [[ -n "$NPM_TOKEN" || "$NPM_USE_OIDC" == "true" ]]; then
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            echo "::warning title=npm publish skipped::Set NPM_TOKEN or set the NPM_USE_OIDC repository variable to true, then run this workflow again."
+            echo "## npm publish skipped" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "Configure the NPM_TOKEN secret or set the NPM_USE_OIDC repository variable to true, then rerun this workflow with workflow_dispatch." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Publish packages
+        if: steps.npm_auth.outputs.publish == 'true'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_USE_OIDC: ${{ vars.NPM_USE_OIDC }}
+        run: |
+          if [[ "$NPM_USE_OIDC" == "true" ]]; then
+            NODE_AUTH_TOKEN= npm run publish:packages
+          else
+            npm run publish:packages
+          fi

@@ -164,9 +164,22 @@ npm run dev
 npm test
 npm run build
 npm run verify:packages
+npm run pack:packages
 ```
 
 根目录是 private npm workspace；两个 `packages/*` 子包是公开发布边界。
+
+## npm 发布
+
+`.github/workflows/publish.yml` 会在 `main` 提交或手动 `workflow_dispatch` 时执行 build、test 和 package tarball 检查（本地同口径命令为 `npm run pack:packages`）。工作流查询 npm 上的现有版本，仅当对应 `package.json` 版本不存在时，按 `@ultigrid/core` → `@ultigrid/insight` 发布；未提升版本的普通提交会安全跳过发布。
+
+首次发布：
+
+1. 创建或拥有 npm 的 `@ultigrid` scope。
+2. 创建 granular access token，将 **Packages and scopes** 设为 **Read and write** 并启用 **Bypass 2FA**，保存为 GitHub Actions Secret `NPM_TOKEN`。
+3. 通过 `workflow_dispatch` 手动运行发布工作流。
+
+首次发布后，推荐分别为两个 npm 包配置 Trusted Publisher：owner `Whiskeyi`、repository `UltimateRenderTable`、workflow `publish.yml`。随后设置仓库 Actions variable `NPM_USE_OIDC=true`，验证 OIDC 发布成功后移除 `NPM_TOKEN`。
 
 ## 路线图
 
