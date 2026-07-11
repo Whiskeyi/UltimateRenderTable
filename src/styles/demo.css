@@ -731,25 +731,6 @@
   gap: 10px;
 }
 
-.repository-intro__hero-side > a {
-  display: inline-flex;
-  min-height: 34px;
-  align-items: center;
-  gap: 7px;
-  padding: 0 11px;
-  color: var(--studio-accent-strong, #17633e);
-  border: 1px solid color-mix(in srgb, var(--studio-accent, #198754) 24%, #dfe6e1);
-  border-radius: 9px;
-  background: #fff;
-  font-size: 9px;
-  font-weight: 720;
-  text-decoration: none;
-}
-
-.repository-intro__hero-side > a:hover {
-  background: color-mix(in srgb, var(--studio-accent, #198754) 6%, #fff);
-}
-
 .repository-intro__stats {
   display: grid;
   grid-template-columns: repeat(3, minmax(88px, auto));
@@ -1737,7 +1718,6 @@
     overflow: auto;
   }
 
-  .repository-intro__hero-side > a,
   .repository-intro__layer-options button,
   .repository-intro__capability-tabs button {
     min-height: 44px;

@@ -1,13 +1,8 @@
-import {
-  ArrowUpRight,
-  Github,
-  Layers3,
-} from 'lucide-react'
+import { Layers3 } from 'lucide-react'
 import { useState } from 'react'
 import { useI18n } from '../i18n'
 import { GALLERY_EXAMPLES } from './galleryExamples'
 
-const REPOSITORY_URL = 'https://github.com/Whiskeyi/UltimateRenderTable'
 type IntroLayer = 'studio' | 'insight' | 'core'
 type CapabilityGroup = 'basic' | 'advanced'
 
@@ -53,9 +48,6 @@ export function RepositoryIntro() {
         </div>
 
         <div className="repository-intro__hero-side">
-          <a href={REPOSITORY_URL} target="_blank" rel="noopener noreferrer">
-            <Github size={16} /> {t('intro.github')} <ArrowUpRight size={14} />
-          </a>
           <dl className="repository-intro__stats">
             <div><dt>{t('intro.stats.scale')}</dt><dd>10¹⁰</dd></div>
             <div><dt>{t('intro.stats.examples')}</dt><dd>{GALLERY_EXAMPLES.length}</dd></div>
