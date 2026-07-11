@@ -30,5 +30,8 @@ describe('theme and repository links', () => {
     expect(markup).toContain('type="color"')
     expect(markup).toContain('href="https://github.com/Whiskeyi/UltimateRenderTable"')
     expect(markup).toContain('target="_blank"')
+    expect(markup).toContain('aria-label="查看源码"')
+    expect(markup).toContain('title="查看源码"')
+    expect(markup).not.toContain('<span>GitHub</span>')
   })
 })

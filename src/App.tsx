@@ -1,6 +1,6 @@
 import {
   Check,
-  Github,
+  Code2,
   RefreshCw,
   X,
 } from 'lucide-react'
@@ -266,15 +266,15 @@ export function App() {
         onExport={(format, config) => handleExport(format, config)}
         toolbarActions={(
           <a
-            className="studio-action-button demo-github-link"
+            className="studio-icon-button demo-github-link"
             data-testid="github-repository-link"
             href="https://github.com/Whiskeyi/UltimateRenderTable"
             target="_blank"
             rel="noopener noreferrer"
-            aria-label={t('app.github.open')}
+            aria-label={t('app.source.open')}
+            title={t('app.source.open')}
           >
-            <Github size={16} />
-            <span>GitHub</span>
+            <Code2 size={17} />
           </a>
         )}
       />
