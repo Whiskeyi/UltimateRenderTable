@@ -4,7 +4,6 @@ import type {
   LazyRowSource,
   RowMeta,
 } from '@ultigrid/insight'
-import type { MergedCellRange } from '@ultigrid/core'
 import { translate, type Locale, type MessageKey } from '../i18n'
 import type { StudioScenario } from '../studio'
 
@@ -38,6 +37,8 @@ const STATUS_KEYS: readonly MessageKey[] = [
   'demo.status.watch',
   'demo.status.risk',
 ]
+const REGION_GROUP_SIZE = 8
+const PRODUCT_GROUP_SIZE = 4
 
 const AVATARS = [
   svgAvatar('LY', '#dbf4e6', '#177a4b'),
@@ -50,49 +51,46 @@ const AVATARS = [
 
 const COLUMN_WIDTHS: Record<StudioScenario, ReadonlyMap<number, number>> = {
   capabilities: new Map(),
+  gallery: new Map(),
   analysis: new Map([
     [0, 200], [1, 160], [2, 148], [3, 108], [4, 136],
     [5, 116], [6, 116], [7, 148], [8, 160], [9, 166],
-  ]),
-  tree: new Map([
-    [0, 282], [1, 108], [2, 148], [3, 132], [4, 132],
-    [5, 120], [6, 164], [7, 116], [8, 166],
   ]),
   conditional: new Map([
     [0, 182], [1, 164], [2, 142], [3, 132], [4, 126],
     [5, 132], [6, 152], [7, 136], [8, 190],
   ]),
-  merged: new Map([
-    [0, 128], [1, 190], [2, 118], [3, 118], [4, 118], [5, 118],
-    [6, 118], [7, 118], [8, 118], [9, 118], [10, 118], [11, 118],
-  ]),
 }
 
-export function getDemoColumnWidths(scenario: StudioScenario): ReadonlyMap<number, number> {
+const TREE_COLUMN_WIDTHS = new Map([
+  [0, 282], [1, 108], [2, 148], [3, 132], [4, 132],
+  [5, 120], [6, 164], [7, 116], [8, 166],
+])
+
+export interface DemoViewOptions {
+  treeEnabled?: boolean
+}
+
+export interface DemoRowSourceOptions extends DemoViewOptions {
+  toggledRows: ReadonlySet<number>
+  expandedByDefault: boolean
+}
+
+export function getDemoColumnWidths(
+  scenario: StudioScenario,
+  options: DemoViewOptions = {},
+): ReadonlyMap<number, number> {
+  if (scenario === 'analysis' && options.treeEnabled) return TREE_COLUMN_WIDTHS
   return COLUMN_WIDTHS[scenario]
 }
 
-export function getDemoRowHeights(scenario: StudioScenario): ReadonlyMap<number, number> {
-  if (scenario !== 'merged') return EMPTY_SIZES
-  return MERGED_ROW_HEIGHTS
-}
-
-const EMPTY_SIZES = new Map<number, number>()
-const MERGED_ROW_HEIGHTS = new Map<number, number>([
-  [0, 58],
-  [1, 48],
-  [2, 48],
-])
-
 export function createDemoRowSource(
   rowCount: number,
-  scenario: StudioScenario,
-  toggledRows: ReadonlySet<number>,
-  expandedByDefault: boolean,
+  options: DemoRowSourceOptions,
 ): LazyRowSource<DemoRow> {
   const cache = new Map<number, DemoRow>()
-  const tree = scenario === 'tree'
-    ? createTreeVisibilityIndex(rowCount, toggledRows, expandedByDefault)
+  const tree = options.treeEnabled
+    ? createTreeVisibilityIndex(rowCount, options.toggledRows, options.expandedByDefault)
     : null
   return {
     rowCount: tree?.visibleCount ?? rowCount,
@@ -201,12 +199,15 @@ function lowerBound(values: readonly number[], target: number): number {
   return low
 }
 
-export function createDemoColumnGetter(scenario: StudioScenario, locale: Locale) {
-  const baseColumns = createScenarioColumns(scenario, locale)
+export function createDemoColumnGetter(
+  scenario: StudioScenario,
+  locale: Locale,
+  options: DemoViewOptions = {},
+) {
+  const baseColumns = createScenarioColumns(scenario, locale, options)
   return (index: number): InsightColumn<DemoRow> => {
     const base = baseColumns[index]
     if (base) return base
-    if (scenario === 'merged') return createMergedColumn(index, locale)
     if (scenario === 'conditional') return createConditionalMetricColumn(index, locale)
     return createMetricColumn(index, baseColumns.length, locale)
   }
@@ -215,10 +216,10 @@ export function createDemoColumnGetter(scenario: StudioScenario, locale: Locale)
 function createScenarioColumns(
   scenario: StudioScenario,
   locale: Locale,
+  options: DemoViewOptions,
 ): InsightColumn<DemoRow>[] {
-  if (scenario === 'tree') return createTreeColumns(locale)
   if (scenario === 'conditional') return createConditionalColumns(locale)
-  if (scenario === 'merged') return Array.from({ length: 12 }, (_, index) => createMergedColumn(index, locale))
+  if (scenario === 'analysis' && options.treeEnabled) return createTreeColumns(locale)
   return createAnalysisColumns(locale)
 }
 
@@ -237,9 +238,9 @@ function createAnalysisColumns(locale: Locale): InsightColumn<DemoRow>[] {
       id: 'dimension',
       header: <ColumnHeader label={translate(locale, 'demo.column.region')} sort />,
       headerText: translate(locale, 'demo.column.region'),
-      getValue: (row) => localizedValue(locale, REGION_KEYS, row.index),
+      getValue: (row) => localizedValue(locale, REGION_KEYS, Math.floor(row.index / REGION_GROUP_SIZE)),
       renderContent: ({ rowIndex, displayValue }) => {
-        const regionIndex = rowIndex % REGION_KEYS.length
+        const regionIndex = Math.floor(rowIndex / REGION_GROUP_SIZE) % REGION_KEYS.length
         const markerStyle = {
           '--demo-region-color': ENTITY_COLORS[regionIndex],
         } as CSSProperties
@@ -253,7 +254,7 @@ function createAnalysisColumns(locale: Locale): InsightColumn<DemoRow>[] {
             />
             <span>
               <strong>{displayValue}</strong>
-              <small>{localizedValue(locale, CHANNEL_KEYS, rowIndex)}</small>
+              <small>{localizedValue(locale, CHANNEL_KEYS, Math.floor(rowIndex / REGION_GROUP_SIZE))}</small>
             </span>
           </span>
         )
@@ -264,7 +265,7 @@ function createAnalysisColumns(locale: Locale): InsightColumn<DemoRow>[] {
       id: 'product',
       header: <ColumnHeader label={translate(locale, 'demo.column.product')} />,
       headerText: translate(locale, 'demo.column.product'),
-      getValue: (row) => PRODUCTS[(row.index * 3 + 1) % PRODUCTS.length],
+      getValue: (row) => PRODUCTS[Math.floor(row.index / PRODUCT_GROUP_SIZE) % PRODUCTS.length],
       visualStyle: { color: '#59635d' },
     },
     {
@@ -712,153 +713,6 @@ function createConditionalMetricColumn(index: number, locale: Locale): InsightCo
             style: { color: '#117346', fontWeight: 750 },
           }],
   }
-}
-
-type MergedAnchorKind = 'horizontal-stress' | 'vertical-stress' | 'banner' | 'block' | 'tile' | null
-
-function getMergedAnchorKind(row: number, column: number): MergedAnchorKind {
-  if (row === 0 && column === 0) return 'horizontal-stress'
-  if (row === 2 && column === 0) return 'vertical-stress'
-  if (row === 1 && column === 2) return 'banner'
-  if (row === 2 && column === 2) return 'block'
-  if (row >= 2 && column >= 8) return 'tile'
-  return null
-}
-
-function createMergedColumn(index: number, locale: Locale): InsightColumn<DemoRow> {
-  const label = index === 0
-    ? translate(locale, 'demo.column.portfolio')
-    : translate(locale, 'demo.column.period', { index })
-  return {
-    id: index === 0 ? 'section' : `period-${index}`,
-    header: <ColumnHeader label={label} />,
-    headerText: label,
-    getValue: (row) => {
-      const kind = getMergedAnchorKind(row.index, index)
-      if (kind === 'horizontal-stress') return translate(locale, 'demo.merge.horizontalStress')
-      if (kind === 'vertical-stress') return translate(locale, 'demo.merge.verticalStress')
-      if (kind === 'banner') return translate(locale, 'demo.merge.banner')
-      if (kind === 'block') return translate(locale, 'demo.merge.block')
-      return metricValue(row.index, index)
-    },
-    formatValue: (value) => typeof value === 'number' ? value.toLocaleString(locale) : String(value),
-    renderContent: ({ rowIndex, columnIndex, displayValue }) => {
-      const kind = getMergedAnchorKind(rowIndex, columnIndex)
-      if (kind === 'horizontal-stress') {
-        return (
-          <span className="demo-merged-banner">
-            <i>{translate(locale, 'demo.merge.horizontalTag')}</i>
-            <strong>{displayValue}</strong>
-            <small>{translate(locale, 'demo.merge.horizontalDetail')}</small>
-          </span>
-        )
-      }
-      if (kind === 'vertical-stress') {
-        return (
-          <span className="demo-merged-vertical">
-            <i>{translate(locale, 'demo.merge.verticalTag')}</i>
-            <strong>{displayValue}</strong>
-            <small>{translate(locale, 'demo.merge.verticalDetail')}</small>
-          </span>
-        )
-      }
-      if (kind === 'banner') {
-        return <span className="demo-merged-section"><strong>{displayValue}</strong><small>Q1 — Q4</small></span>
-      }
-      if (kind === 'block') {
-        return <span className="demo-merged-block"><i>{translate(locale, 'demo.merge.live')}</i><strong>{displayValue}</strong><small>{translate(locale, 'demo.merge.blockDetail')}</small></span>
-      }
-      return <span className="demo-merged-value">{displayValue}</span>
-    },
-    visualStyle: {
-      horizontalAlign: index === 0 ? 'left' : 'right',
-      fontFamily: 'var(--font-mono)',
-      color: '#435047',
-    },
-  }
-}
-
-export function createDemoMerges(
-  rowCount: number,
-  columnCount: number,
-  requestedCount: number,
-  scenario: StudioScenario,
-): MergedCellRange[] {
-  if (scenario !== 'merged' || rowCount <= 0 || columnCount <= 0 || requestedCount <= 0) return []
-  const target = Math.min(requestedCount, 100_000)
-  const result: MergedCellRange[] = []
-  const lastRow = rowCount - 1
-  const lastColumn = columnCount - 1
-
-  result.push({
-    id: 'horizontal-stress-10k-columns',
-    rowStart: 0,
-    rowEnd: 0,
-    columnStart: 0,
-    columnEnd: Math.min(lastColumn, columnCount > 10_000 ? 10_500 : 5),
-  })
-  if (result.length >= target) return result
-
-  if (rowCount >= 3) {
-    result.push({
-      id: 'vertical-stress-10k-rows',
-      rowStart: 2,
-      rowEnd: Math.min(lastRow, rowCount > 10_000 ? 10_500 : 9),
-      columnStart: 0,
-      columnEnd: 0,
-    })
-  }
-  if (result.length >= target) return result
-
-  if (rowCount >= 2 && columnCount >= 3) {
-    result.push({
-      id: 'planning-banner',
-      rowStart: 1,
-      rowEnd: 1,
-      columnStart: 2,
-      columnEnd: Math.min(lastColumn, 6),
-    })
-  }
-  if (result.length >= target) return result
-
-  if (rowCount >= 5 && columnCount >= 6) {
-    result.push({
-      id: 'collaboration-block',
-      rowStart: 2,
-      rowEnd: 4,
-      columnStart: 2,
-      columnEnd: 5,
-    })
-  }
-
-  const columnBase = 8
-  const tileWidth = 6
-  const tileHeight = 5
-  const tilesPerRow = Math.floor((columnCount - columnBase) / tileWidth)
-  if (tilesPerRow <= 0) return result
-
-  for (let slot = 0; result.length < target; slot += 1) {
-    const tileRow = 2 + Math.floor(slot / tilesPerRow) * tileHeight
-    const tileColumn = columnBase + (slot % tilesPerRow) * tileWidth
-    if (tileRow + 3 > lastRow) break
-    const horizontal = slot % 2 === 0
-    result.push(horizontal
-      ? {
-          id: `tile-horizontal-${slot}`,
-          rowStart: tileRow,
-          rowEnd: tileRow,
-          columnStart: tileColumn,
-          columnEnd: tileColumn + 3,
-        }
-      : {
-          id: `tile-vertical-${slot}`,
-          rowStart: tileRow,
-          rowEnd: tileRow + 3,
-          columnStart: tileColumn,
-          columnEnd: tileColumn,
-        })
-  }
-  return result
 }
 
 function ColumnHeader({ label, sort = false }: { label: string; sort?: boolean }): ReactNode {

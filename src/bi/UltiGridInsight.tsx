@@ -45,6 +45,10 @@ import {
   viewportRangeToData,
   viewportSnapshotToData,
 } from './coordinates'
+import {
+  buildAdjacentMerges,
+  type AdjacentMergeOptions,
+} from './adjacentMerge'
 import type { InsightRowModel, RowMeta } from './rowModel'
 import type {
   InsightCellIcon,
@@ -154,6 +158,8 @@ export type InsightColumnsProps<TRow> =
 
 export interface UltiGridInsightBaseProps<TRow> {
   mergedCells?: readonly MergedCellRange[]
+  /** Generates vertical data-column merges; explicit mergedCells remain authoritative. */
+  mergeAdjacent?: false | AdjacentMergeOptions<TRow>
   conditionalRules?: readonly ConditionalFormatRule<TRow>[]
   defaultRowHeight?: number
   defaultColumnWidth?: number
@@ -255,6 +261,7 @@ export function UltiGridInsight<TRow>(props: UltiGridInsightProps<TRow>) {
     getColumn: getLazyColumn,
     getColumnWidth: getLazyColumnWidth,
     mergedCells = EMPTY_MERGED_CELLS,
+    mergeAdjacent,
     conditionalRules,
     defaultRowHeight = 34,
     defaultColumnWidth = 136,
@@ -390,13 +397,49 @@ export function UltiGridInsight<TRow>(props: UltiGridInsightProps<TRow>) {
     [activeConditionalRules],
   )
 
-  const mergedWithChrome = useMemo(() => mergedCells.map((merge) => ({
+  const getAdjacentMergeRow = useCallback((index: number): TRow | undefined => {
+    if (index < 0 || index >= dataRowCount) return undefined
+    return rowModel?.getRow(index) ?? rowSource?.getRow(index) ?? rows?.[index]
+  }, [dataRowCount, rowModel, rowSource, rows, modelVersion])
+  const getAdjacentMergeRowMeta = useCallback((index: number, target?: RowMeta) => (
+    rowModel?.getRowMeta(index, target) ?? rowSource?.getRowMeta?.(index, target)
+  ), [rowModel, rowSource, modelVersion])
+  const generatedMergedCells = useMemo(() => {
+    if (!mergeAdjacent) return EMPTY_MERGED_CELLS
+    return buildAdjacentMerges({
+      rowCount: dataRowCount,
+      columnCount: dataColumnCount,
+      getRow: getAdjacentMergeRow,
+      getColumnValue: (columnIndex, row, rowIndex) => (
+        getColumn(columnIndex).getValue(row, rowIndex)
+      ),
+      getRowMeta: rowModel || rowSource?.getRowMeta ? getAdjacentMergeRowMeta : undefined,
+    }, mergeAdjacent, mergedCells)
+  }, [
+    mergeAdjacent,
+    mergedCells,
+    dataRowCount,
+    dataColumnCount,
+    getAdjacentMergeRow,
+    getAdjacentMergeRowMeta,
+    getColumn,
+    rowModel,
+    rowSource,
+    contentVersion,
+  ])
+  const effectiveMergedCells = useMemo(
+    () => generatedMergedCells.length > 0
+      ? [...mergedCells, ...generatedMergedCells]
+      : mergedCells,
+    [mergedCells, generatedMergedCells],
+  )
+  const mergedWithChrome = useMemo(() => effectiveMergedCells.map((merge) => ({
     ...merge,
     rowStart: merge.rowStart + headerOffset,
     rowEnd: merge.rowEnd + headerOffset,
     columnStart: merge.columnStart + rowNumberOffset,
     columnEnd: merge.columnEnd + rowNumberOffset,
-  })), [mergedCells, headerOffset, rowNumberOffset])
+  })), [effectiveMergedCells, headerOffset, rowNumberOffset])
 
   const effectiveColumnWidths = useMemo(() => {
     const result = new Map<number, number>()
@@ -648,7 +691,7 @@ export function UltiGridInsight<TRow>(props: UltiGridInsightProps<TRow>) {
       }),
       fileName,
       treeColumnId,
-      merges: mergedCells.flatMap((merge) => {
+      merges: effectiveMergedCells.flatMap((merge) => {
         if (
           merge.rowEnd < range.rowStart || merge.rowStart > range.rowEnd ||
           merge.columnEnd < range.columnStart || merge.columnStart > range.columnEnd
@@ -668,7 +711,7 @@ export function UltiGridInsight<TRow>(props: UltiGridInsightProps<TRow>) {
     getRow,
     resolveRowMeta,
     treeColumnId,
-    mergedCells,
+    effectiveMergedCells,
     exportCellLimit,
     columnWidths,
     defaultColumnWidth,

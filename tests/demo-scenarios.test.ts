@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { createDemoColumnGetter } from '../src/demo/demoData'
 
-const SCENARIOS = ['analysis', 'tree', 'conditional', 'merged'] as const
+const SCENARIOS = ['analysis', 'conditional'] as const
 const SAMPLE_COLUMN_COUNT = 12
 
 function getScenarioSignature(scenario: (typeof SCENARIOS)[number]) {
@@ -32,20 +32,32 @@ describe('demo scenario columns', () => {
         'revenue[custom-dom+rules:dataBar,text]',
       ],
       [
-        'dimension[custom-dom]',
-        'node-type[custom-dom]',
-        'owner[text+image]',
-      ],
-      [
         'entity[custom-dom]',
         'revenue-bar[text+rules:dataBar]',
         'attainment-scale[text+rules:colorScale]',
       ],
-      [
-        'section[custom-dom]',
-        'period-1[custom-dom]',
-        'period-2[custom-dom]',
-      ],
     ])
+  })
+
+  it('reuses business analytics with a tree column composition when enabled', () => {
+    const getColumn = createDemoColumnGetter('analysis', 'en-US', { treeEnabled: true })
+
+    expect(Array.from({ length: 3 }, (_, index) => getColumn(index).id)).toEqual([
+      'dimension',
+      'node-type',
+      'owner',
+    ])
+  })
+
+  it('groups flat analysis dimensions into contiguous runs', () => {
+    const getColumn = createDemoColumnGetter('analysis', 'en-US')
+    const region = getColumn(0)
+    const product = getColumn(1)
+    const row = (index: number) => ({ id: index, index })
+
+    expect(region.getValue(row(0), 0)).toBe(region.getValue(row(7), 7))
+    expect(region.getValue(row(8), 8)).not.toBe(region.getValue(row(7), 7))
+    expect(product.getValue(row(0), 0)).toBe(product.getValue(row(3), 3))
+    expect(product.getValue(row(4), 4)).not.toBe(product.getValue(row(3), 3))
   })
 })

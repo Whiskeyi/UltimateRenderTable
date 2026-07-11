@@ -3,8 +3,10 @@ import { translate } from '../src/i18n'
 
 describe('translate', () => {
   it('returns Chinese and English messages from the selected locale', () => {
-    expect(translate('zh-CN', 'scenario.merged')).toBe('合并画布')
-    expect(translate('en-US', 'scenario.merged')).toBe('Merged canvas')
+    expect(translate('zh-CN', 'scenario.gallery')).toBe('组件展厅')
+    expect(translate('en-US', 'scenario.gallery')).toBe('Component gallery')
+    expect(translate('zh-CN', 'studio.field.treeEnabled')).toBe('树形展示')
+    expect(translate('en-US', 'studio.field.mergeSameValueDimensions')).toBe('Merge matching dimensions')
   })
 
   it('interpolates every supplied placeholder', () => {

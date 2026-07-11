@@ -29,7 +29,7 @@ export interface CapabilityOverviewProps {
   className?: string
 }
 
-type CapabilityScenario = 'analysis' | 'tree' | 'conditional' | 'merged'
+type CapabilityGroupId = 'engine' | 'application' | 'formatting' | 'delivery'
 
 interface CapabilityItem {
   icon: LucideIcon
@@ -38,7 +38,7 @@ interface CapabilityItem {
 }
 
 interface CapabilityGroup {
-  scenario: CapabilityScenario
+  id: CapabilityGroupId
   icon: LucideIcon
   label: MessageKey
   detail: MessageKey
@@ -54,10 +54,10 @@ const OVERVIEW_STATS = [
 
 const CAPABILITY_GROUPS: readonly CapabilityGroup[] = [
   {
-    scenario: 'analysis',
+    id: 'engine',
     icon: Gauge,
-    label: 'scenario.analysis',
-    detail: 'scenario.analysis.detail',
+    label: 'capability.group.engine',
+    detail: 'capability.group.engine.detail',
     proof: ['viewport', 'Map', 'bounded cache'],
     items: [
       {
@@ -78,10 +78,10 @@ const CAPABILITY_GROUPS: readonly CapabilityGroup[] = [
     ],
   },
   {
-    scenario: 'tree',
+    id: 'application',
     icon: TreePine,
-    label: 'scenario.tree',
-    detail: 'scenario.tree.detail',
+    label: 'capability.group.application',
+    detail: 'capability.group.application.detail',
     proof: ['tree / flat', 'lazy nodes', 'TSV'],
     items: [
       {
@@ -102,10 +102,10 @@ const CAPABILITY_GROUPS: readonly CapabilityGroup[] = [
     ],
   },
   {
-    scenario: 'conditional',
+    id: 'formatting',
     icon: SwatchBook,
-    label: 'scenario.conditional',
-    detail: 'scenario.conditional.detail',
+    label: 'capability.group.formatting',
+    detail: 'capability.group.formatting.detail',
     proof: ['text', 'fill', 'icon · scale · bar'],
     items: [
       {
@@ -126,10 +126,10 @@ const CAPABILITY_GROUPS: readonly CapabilityGroup[] = [
     ],
   },
   {
-    scenario: 'merged',
+    id: 'delivery',
     icon: Merge,
-    label: 'scenario.merged',
-    detail: 'scenario.merged.detail',
+    label: 'capability.group.delivery',
+    detail: 'capability.group.delivery.detail',
     proof: ['10K+ span', '.xlsx', '.png'],
     items: [
       {
@@ -193,9 +193,9 @@ export function CapabilityOverview({
             return (
               <article
                 className="capability-overview__scenario"
-                data-scenario={group.scenario}
-                id={`capability-${group.scenario}`}
-                key={group.scenario}
+                data-group={group.id}
+                id={`capability-${group.id}`}
+                key={group.id}
               >
                 <header className="capability-overview__scenario-head">
                   <span className="capability-overview__scenario-index">
@@ -205,7 +205,7 @@ export function CapabilityOverview({
                     <GroupIcon size={18} strokeWidth={1.8} />
                   </span>
                   <div>
-                    <small>{group.scenario}</small>
+                    <small>{group.id}</small>
                     <h2>{translate(group.label)}</h2>
                     <p>{translate(group.detail)}</p>
                   </div>

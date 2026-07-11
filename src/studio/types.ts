@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 
-export type StudioScenario = 'capabilities' | 'analysis' | 'tree' | 'conditional' | 'merged'
+export type StudioScenario = 'capabilities' | 'gallery' | 'analysis' | 'conditional'
 
 export type StudioDensity = 'compact' | 'comfortable' | 'relaxed'
 
@@ -16,7 +16,6 @@ export interface StudioTableConfig {
   scenario: StudioScenario
   rowCount: number
   columnCount: number
-  mergedCellCount: number
   rowHeight: number
   columnWidth: number
   overscanRows: number
@@ -31,6 +30,8 @@ export interface StudioTableConfig {
   showGridLines: boolean
   stripedRows: boolean
   showRowNumbers: boolean
+  treeEnabled: boolean
+  mergeSameValueDimensions: boolean
   treeExpandedByDefault: boolean
 }
 
@@ -83,7 +84,6 @@ export const DEFAULT_STUDIO_CONFIG: StudioTableConfig = {
   scenario: 'analysis',
   rowCount: 100_000,
   columnCount: 100_000,
-  mergedCellCount: 0,
   rowHeight: 42,
   columnWidth: 136,
   overscanRows: 6,
@@ -98,5 +98,7 @@ export const DEFAULT_STUDIO_CONFIG: StudioTableConfig = {
   showGridLines: true,
   stripedRows: true,
   showRowNumbers: true,
+  treeEnabled: false,
+  mergeSameValueDimensions: true,
   treeExpandedByDefault: true,
 }

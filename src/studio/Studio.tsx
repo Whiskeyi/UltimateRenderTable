@@ -24,7 +24,6 @@ import {
   Settings2,
   Sparkles,
   Table2,
-  TreePine,
   TriangleAlert,
   X,
   Zap,
@@ -65,6 +64,7 @@ type InspectorTab = 'props' | 'json'
 
 interface ScenarioOption {
   value: StudioScenario
+  kind: 'overview' | 'gallery' | 'table'
   labelKey: MessageKey
   detailKey: MessageKey
   icon: typeof LayoutDashboard
@@ -76,18 +76,30 @@ interface ScalePreset {
   labelKey: MessageKey
   detail: string
   patch: Partial<StudioTableConfig>
-  mergedCellCount: number
 }
 
 const SCENARIOS: ScenarioOption[] = [
   {
     value: 'capabilities',
+    kind: 'overview',
     labelKey: 'scenario.capabilities',
     detailKey: 'scenario.capabilities.detail',
     icon: Layers3,
     patch: {
       scenario: 'capabilities',
-      mergedCellCount: 0,
+      showGridLines: false,
+      stripedRows: false,
+      showRowNumbers: false,
+    },
+  },
+  {
+    value: 'gallery',
+    kind: 'gallery',
+    labelKey: 'scenario.gallery',
+    detailKey: 'scenario.gallery.detail',
+    icon: Grid2X2,
+    patch: {
+      scenario: 'gallery',
       showGridLines: false,
       stripedRows: false,
       showRowNumbers: false,
@@ -95,68 +107,38 @@ const SCENARIOS: ScenarioOption[] = [
   },
   {
     value: 'analysis',
+    kind: 'table',
     labelKey: 'scenario.analysis',
     detailKey: 'scenario.analysis.detail',
     icon: LayoutDashboard,
     patch: {
       scenario: 'analysis',
-      mergedCellCount: 0,
       rowHeight: 42,
       frozenTopRows: 1,
       frozenLeftColumns: 2,
       showGridLines: true,
       stripedRows: true,
       showRowNumbers: true,
-    },
-  },
-  {
-    value: 'tree',
-    labelKey: 'scenario.tree',
-    detailKey: 'scenario.tree.detail',
-    icon: TreePine,
-    patch: {
-      scenario: 'tree',
-      mergedCellCount: 0,
-      rowHeight: 42,
-      frozenTopRows: 1,
-      frozenLeftColumns: 1,
-      showGridLines: false,
-      stripedRows: false,
-      showRowNumbers: false,
+      treeEnabled: false,
+      mergeSameValueDimensions: true,
     },
   },
   {
     value: 'conditional',
+    kind: 'table',
     labelKey: 'scenario.conditional',
     detailKey: 'scenario.conditional.detail',
     icon: Sparkles,
     patch: {
       scenario: 'conditional',
-      mergedCellCount: 0,
       rowHeight: 38,
       frozenTopRows: 1,
       frozenLeftColumns: 1,
       showGridLines: false,
       stripedRows: false,
       showRowNumbers: false,
-    },
-  },
-  {
-    value: 'merged',
-    labelKey: 'scenario.merged',
-    detailKey: 'scenario.merged.detail',
-    icon: Grid2X2,
-    patch: {
-      scenario: 'merged',
-      rowCount: 100_000,
-      columnCount: 100_000,
-      mergedCellCount: 12_000,
-      rowHeight: 38,
-      frozenTopRows: 0,
-      frozenLeftColumns: 0,
-      showGridLines: true,
-      stripedRows: false,
-      showRowNumbers: false,
+      treeEnabled: false,
+      mergeSameValueDimensions: false,
     },
   },
 ]
@@ -167,32 +149,18 @@ const SCALE_PRESETS: ScalePreset[] = [
     labelKey: 'preset.everyday',
     detail: '1K × 40',
     patch: { rowCount: 1_000, columnCount: 40 },
-    mergedCellCount: 24,
   },
   {
     id: 'wide',
     labelKey: 'preset.wide',
     detail: '10K × 2K',
     patch: { rowCount: 10_000, columnCount: 2_000 },
-    mergedCellCount: 600,
   },
   {
     id: 'maximum',
     labelKey: 'preset.maximum',
     detail: '100K × 100K',
     patch: { rowCount: 100_000, columnCount: 100_000 },
-    mergedCellCount: 12_000,
-  },
-  {
-    id: 'merge-stress',
-    labelKey: 'preset.merged',
-    detail: '12K merges',
-    patch: {
-      scenario: 'merged',
-      rowCount: 100_000,
-      columnCount: 100_000,
-    },
-    mergedCellCount: 12_000,
   },
 ]
 
@@ -201,7 +169,6 @@ const NUMBER_LIMITS: Partial<
 > = {
   rowCount: { min: 1, max: 100_000 },
   columnCount: { min: 1, max: 100_000 },
-  mergedCellCount: { min: 0, max: 100_000 },
   rowHeight: { min: 20, max: 120 },
   columnWidth: { min: 48, max: 480 },
   overscanRows: { min: 0, max: 50 },
@@ -215,7 +182,6 @@ const NUMBER_LIMITS: Partial<
 const INTEGER_FIELDS = new Set<keyof StudioTableConfig>([
   'rowCount',
   'columnCount',
-  'mergedCellCount',
   'overscanRows',
   'overscanColumns',
   'frozenTopRows',
@@ -230,6 +196,8 @@ const BOOLEAN_FIELDS: readonly (keyof StudioTableConfig)[] = [
   'showGridLines',
   'stripedRows',
   'showRowNumbers',
+  'treeEnabled',
+  'mergeSameValueDimensions',
   'treeExpandedByDefault',
 ]
 
@@ -252,7 +220,7 @@ function normalizeConfig<TConfig extends StudioTableConfig>(
   }
 
   const next = { ...current, ...(candidate as Partial<TConfig>) }
-  const scenarios: StudioScenario[] = ['capabilities', 'analysis', 'tree', 'conditional', 'merged']
+  const scenarios: StudioScenario[] = ['capabilities', 'gallery', 'analysis', 'conditional']
   const densities: StudioDensity[] = ['compact', 'comfortable', 'relaxed']
 
   if (!scenarios.includes(next.scenario)) {
@@ -278,7 +246,6 @@ function normalizeConfig<TConfig extends StudioTableConfig>(
   for (const key of BOOLEAN_FIELDS) {
     if (typeof next[key] !== 'boolean') throw new Error(t('error.boolean', { key }))
   }
-
   return next
 }
 
@@ -741,12 +708,12 @@ export function Studio<TConfig extends StudioTableConfig = StudioTableConfig>({
   )
 
   const activeScenario = SCENARIOS.find((item) => item.value === config.scenario) ?? SCENARIOS[0]!
+  const isTableScenario = activeScenario.kind === 'table'
+  const effectiveInspectorOpen = inspectorOpen && isTableScenario
   const activePreset = SCALE_PRESETS.find(
     (preset) =>
       preset.patch.rowCount === config.rowCount &&
       preset.patch.columnCount === config.columnCount &&
-      (config.scenario === 'merged' ? preset.mergedCellCount : 0) === config.mergedCellCount &&
-      !(config.scenario === 'merged' && preset.id === 'maximum') &&
       (preset.patch.scenario === undefined || preset.patch.scenario === config.scenario),
   )
   const stageStatus = error
@@ -758,7 +725,7 @@ export function Studio<TConfig extends StudioTableConfig = StudioTableConfig>({
   const sampledExport = config.rowCount > 2_000 || config.columnCount > 128
   const studioClassName = [
     'table-studio',
-    inspectorOpen ? 'has-inspector' : 'is-inspector-hidden',
+    effectiveInspectorOpen ? 'has-inspector' : 'is-inspector-hidden',
     className ?? '',
   ]
     .filter(Boolean)
@@ -772,7 +739,7 @@ export function Studio<TConfig extends StudioTableConfig = StudioTableConfig>({
       className={studioClassName}
       style={studioStyle}
       onKeyDown={handleKeyboard}
-      data-inspector-open={inspectorOpen}
+      data-inspector-open={effectiveInspectorOpen}
     >
       <header className="studio-topbar">
         <div className="studio-brand">
@@ -823,79 +790,85 @@ export function Studio<TConfig extends StudioTableConfig = StudioTableConfig>({
               EN
             </button>
           </span>
-          <button
-            type="button"
-            className="studio-icon-button studio-reset-button"
-            onClick={resetConfig}
-            title={`${t('studio.reset')} (⌘⇧0)`}
-            aria-label={t('studio.reset')}
-          >
-            <RotateCcw size={16} />
-          </button>
-          <div
-            className="studio-export-menu"
-            onBlur={(event) => {
-              if (!event.currentTarget.contains(event.relatedTarget)) setExportOpen(false)
-            }}
-          >
-            <button
-              ref={exportTriggerRef}
-              data-testid="studio-export-trigger"
-              type="button"
-              className="studio-action-button"
-              aria-haspopup="dialog"
-              aria-expanded={exportOpen}
-              aria-label={t('studio.export')}
-              disabled={!onExport || Boolean(exporting)}
-              onClick={() => setExportOpen((open) => !open)}
-            >
-              <Download size={16} />
-              <span>{exporting ? t('studio.exporting', { format: exporting.toUpperCase() }) : t('studio.export')}</span>
-              <ChevronDown size={14} />
-            </button>
-            <div
-              ref={exportPopoverRef}
-              className={`studio-export-popover ${exportOpen ? 'is-open' : ''}`}
-              role="dialog"
-              aria-label={t('studio.export.dialog')}
-            >
-              <div className="studio-export-head">
-                <span><strong>{t('studio.export.title')}</strong><small>{t('studio.export.subtitle')}</small></span>
-                <button type="button" onClick={() => closeExport()} aria-label={t('studio.export.close')}>
-                  <X size={14} />
+          {isTableScenario ? (
+            <>
+              <button
+                type="button"
+                className="studio-icon-button studio-reset-button"
+                onClick={resetConfig}
+                title={`${t('studio.reset')} (⌘⇧0)`}
+                aria-label={t('studio.reset')}
+              >
+                <RotateCcw size={16} />
+              </button>
+              <div
+                className="studio-export-menu"
+                onBlur={(event) => {
+                  if (!event.currentTarget.contains(event.relatedTarget)) setExportOpen(false)
+                }}
+              >
+                <button
+                  ref={exportTriggerRef}
+                  data-testid="studio-export-trigger"
+                  type="button"
+                  className="studio-action-button"
+                  aria-haspopup="dialog"
+                  aria-expanded={exportOpen}
+                  aria-label={t('studio.export')}
+                  disabled={!onExport || Boolean(exporting)}
+                  onClick={() => setExportOpen((open) => !open)}
+                >
+                  <Download size={16} />
+                  <span>{exporting ? t('studio.exporting', { format: exporting.toUpperCase() }) : t('studio.export')}</span>
+                  <ChevronDown size={14} />
                 </button>
+                <div
+                  ref={exportPopoverRef}
+                  className={`studio-export-popover ${exportOpen ? 'is-open' : ''}`}
+                  role="dialog"
+                  aria-label={t('studio.export.dialog')}
+                >
+                  <div className="studio-export-head">
+                    <span><strong>{t('studio.export.title')}</strong><small>{t('studio.export.subtitle')}</small></span>
+                    <button type="button" onClick={() => closeExport()} aria-label={t('studio.export.close')}>
+                      <X size={14} />
+                    </button>
+                  </div>
+                  {sampledExport ? (
+                    <p className="studio-export-note">
+                      {t('studio.export.sample')}
+                    </p>
+                  ) : null}
+                  <button type="button" onClick={() => void runExport('xlsx')}>
+                    <FileJson2 size={17} />
+                    <span><strong>{t('studio.export.excel')}</strong><small>{t('studio.export.excel.detail')}</small></span>
+                  </button>
+                  <button type="button" onClick={() => void runExport('png')}>
+                    <Image size={17} />
+                    <span><strong>{t('studio.export.image')}</strong><small>{t('studio.export.image.detail')}</small></span>
+                  </button>
+                  <button type="button" onClick={() => void runExport('csv')}>
+                    <Braces size={17} />
+                    <span><strong>{t('studio.export.csv')}</strong><small>{t('studio.export.csv.detail')}</small></span>
+                  </button>
+                  {exportError ? <p className="studio-export-error" role="alert">{exportError}</p> : null}
+                </div>
               </div>
-              {sampledExport ? (
-                <p className="studio-export-note">
-                  {t('studio.export.sample')}
-                </p>
-              ) : null}
-              <button type="button" onClick={() => void runExport('xlsx')}>
-                <FileJson2 size={17} />
-                <span><strong>{t('studio.export.excel')}</strong><small>{t('studio.export.excel.detail')}</small></span>
-              </button>
-              <button type="button" onClick={() => void runExport('png')}>
-                <Image size={17} />
-                <span><strong>{t('studio.export.image')}</strong><small>{t('studio.export.image.detail')}</small></span>
-              </button>
-              <button type="button" onClick={() => void runExport('csv')}>
-                <Braces size={17} />
-                <span><strong>{t('studio.export.csv')}</strong><small>{t('studio.export.csv.detail')}</small></span>
-              </button>
-              {exportError ? <p className="studio-export-error" role="alert">{exportError}</p> : null}
-            </div>
-          </div>
-          <button
-            ref={inspectorToggleRef}
-            type="button"
-            className="studio-icon-button studio-inspector-toggle"
-            onClick={() => setInspectorOpen((open) => !open)}
-            title={`${t('studio.inspector.toggle')} (⌘\)`}
-            aria-label={inspectorOpen ? t('studio.inspector.collapse') : t('studio.inspector.expand')}
-            aria-expanded={inspectorOpen}
-          >
-            {inspectorOpen ? <PanelRightClose size={18} /> : <PanelRightOpen size={18} />}
-          </button>
+            </>
+          ) : null}
+          {isTableScenario ? (
+            <button
+              ref={inspectorToggleRef}
+              type="button"
+              className="studio-icon-button studio-inspector-toggle"
+              onClick={() => setInspectorOpen((open) => !open)}
+              title={`${t('studio.inspector.toggle')} (⌘\)`}
+              aria-label={inspectorOpen ? t('studio.inspector.collapse') : t('studio.inspector.expand')}
+              aria-expanded={inspectorOpen}
+            >
+              {inspectorOpen ? <PanelRightClose size={18} /> : <PanelRightOpen size={18} />}
+            </button>
+          ) : null}
         </div>
       </header>
 
@@ -915,7 +888,7 @@ export function Studio<TConfig extends StudioTableConfig = StudioTableConfig>({
             </div>
 
             <div className="studio-stage-controls">
-              {config.scenario === 'capabilities' ? (
+              {!isTableScenario ? (
                 <span className="studio-package-pair">
                   <span>@ultigrid/core</span>
                   <i aria-hidden="true" />
@@ -930,10 +903,7 @@ export function Studio<TConfig extends StudioTableConfig = StudioTableConfig>({
                       onChange={(event) => {
                         const preset = SCALE_PRESETS.find((item) => item.id === event.target.value)
                         if (preset) {
-                          const mergedCellCount = (
-                            config.scenario === 'merged' || preset.patch.scenario === 'merged'
-                          ) ? preset.mergedCellCount : 0
-                          patchConfig({ ...preset.patch, mergedCellCount } as Partial<TConfig>, 'preset')
+                          patchConfig(preset.patch as Partial<TConfig>, 'preset')
                         }
                       }}
                       aria-label={t('studio.scale.preset')}
@@ -1012,7 +982,7 @@ export function Studio<TConfig extends StudioTableConfig = StudioTableConfig>({
           </div>
 
           <footer className="studio-stage-statusbar">
-            {config.scenario === 'capabilities' ? (
+            {!isTableScenario ? (
               <>
                 <span><Layers3 size={13} /> @ultigrid/core</span>
                 <span>@ultigrid/insight</span>
@@ -1022,7 +992,6 @@ export function Studio<TConfig extends StudioTableConfig = StudioTableConfig>({
             ) : (
               <>
                 <span><Zap size={13} /> Windowed DOM</span>
-                <span>{t('studio.status.merges', { count: formatCompactNumber(config.mergedCellCount, locale) })}</span>
                 <span>{t('studio.status.pinnedRows', { count: config.frozenTopRows + config.frozenBottomRows })}</span>
                 <span>{t('studio.status.pinnedColumns', { count: config.frozenLeftColumns + config.frozenRightColumns })}</span>
                 <span className="studio-status-spacer" />
@@ -1033,7 +1002,7 @@ export function Studio<TConfig extends StudioTableConfig = StudioTableConfig>({
           </footer>
         </section>
 
-        {inspectorOpen ? (
+        {effectiveInspectorOpen ? (
           <button
             type="button"
             className="studio-inspector-scrim"
@@ -1182,13 +1151,6 @@ export function Studio<TConfig extends StudioTableConfig = StudioTableConfig>({
                     onChange={(overscanColumns) => patchConfig({ overscanColumns } as Partial<TConfig>)}
                   />
                 </div>
-                <NumberField
-                  label={t('studio.field.merges')}
-                  value={config.mergedCellCount}
-                  min={0}
-                  max={100_000}
-                  onChange={(mergedCellCount) => patchConfig({ mergedCellCount } as Partial<TConfig>)}
-                />
               </ConfigSection>
 
               <ConfigSection icon={Columns3} title={t('studio.section.frozen')} detail={t('studio.section.frozen.detail')}>
@@ -1235,7 +1197,23 @@ export function Studio<TConfig extends StudioTableConfig = StudioTableConfig>({
                 <ToggleField label={t('studio.field.gridLines')} checked={config.showGridLines} onChange={(showGridLines) => patchConfig({ showGridLines } as Partial<TConfig>)} />
                 <ToggleField label={t('studio.field.striped')} checked={config.stripedRows} onChange={(stripedRows) => patchConfig({ stripedRows } as Partial<TConfig>)} />
                 <ToggleField label={t('studio.field.rowNumbers')} checked={config.showRowNumbers} onChange={(showRowNumbers) => patchConfig({ showRowNumbers } as Partial<TConfig>)} />
-                <ToggleField label={t('studio.field.treeExpanded')} checked={config.treeExpandedByDefault} onChange={(treeExpandedByDefault) => patchConfig({ treeExpandedByDefault } as Partial<TConfig>)} />
+                {config.scenario === 'analysis' ? (
+                  <>
+                    <ToggleField
+                      label={t('studio.field.treeEnabled')}
+                      checked={config.treeEnabled}
+                      onChange={(treeEnabled) => patchConfig({ treeEnabled } as Partial<TConfig>)}
+                    />
+                    <ToggleField
+                      label={t('studio.field.mergeSameValueDimensions')}
+                      checked={config.mergeSameValueDimensions}
+                      onChange={(mergeSameValueDimensions) => patchConfig({ mergeSameValueDimensions } as Partial<TConfig>)}
+                    />
+                    {config.treeEnabled ? (
+                      <ToggleField label={t('studio.field.treeExpanded')} checked={config.treeExpandedByDefault} onChange={(treeExpandedByDefault) => patchConfig({ treeExpandedByDefault } as Partial<TConfig>)} />
+                    ) : null}
+                  </>
+                ) : null}
               </ConfigSection>
             </div>
           ) : (

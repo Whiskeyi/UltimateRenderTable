@@ -1,10 +1,10 @@
 # @ultigrid/core
 
-The low-level React DOM viewport engine behind UltiGrid.
+The rendering grid behind UltiGrid: a React DOM viewport engine with two-axis virtualization, four-edge freezing, rectangle merges, selection, keyboard navigation, and copy.
 
-`@ultigrid/core` is for grids that need full control over their data protocol and cell rendering. It addresses very large logical row and column counts without requiring a two-dimensional data array, and creates DOM primarily for the visible window, overscan, and effective frozen regions.
+Core reads cells by coordinate and keeps BI semantics outside the rendering hot path. It does not allocate a two-dimensional data matrix or infer merges from business values.
 
-> Status: **0.1.0 / Alpha**. The package is ESM-only and does not make a fixed cross-device FPS promise.
+> Status: **0.1.0 / Alpha**. ESM-only; React and ReactDOM `>=18.2 <20` are peer dependencies.
 
 ## Install
 
@@ -12,37 +12,24 @@ The low-level React DOM viewport engine behind UltiGrid.
 npm install @ultigrid/core react react-dom
 ```
 
-React and ReactDOM `>=18.2 <20` are peer dependencies.
-
-Import the stylesheet once in your application entry:
-
 ```tsx
 import '@ultigrid/core/style.css'
 ```
 
-## Minimal usage
+## Usage
 
 ```tsx
-import { useCallback, useMemo, useRef } from 'react'
-import {
-  UltiGridViewport,
-  type MergedCellRange,
-  type UltiGridViewportApi,
-} from '@ultigrid/core'
+import { useCallback, useMemo } from 'react'
+import { UltiGridViewport, type MergedCellRange } from '@ultigrid/core'
 import '@ultigrid/core/style.css'
 
-export function LargeGrid() {
-  const apiRef = useRef<UltiGridViewportApi | null>(null)
+export function CoordinateGrid() {
   const getCell = useCallback((row: number, column: number) => ({
     value: row * 100_000 + column,
     text: `${row}:${column}`,
   }), [])
-  const columnWidths = useMemo(
-    () => new Map<number, number>([[0, 220], [3, 168]]),
-    [],
-  )
   const mergedCells = useMemo<readonly MergedCellRange[]>(() => [
-    { id: 'banner', rowStart: 0, rowEnd: 0, columnStart: 0, columnEnd: 10_500 },
+    { id: 'header', rowStart: 0, rowEnd: 0, columnStart: 0, columnEnd: 3 },
   ], [])
 
   return (
@@ -50,56 +37,49 @@ export function LargeGrid() {
       rowCount={100_000}
       columnCount={100_000}
       getCell={getCell}
-      columnWidths={columnWidths}
       mergedCells={mergedCells}
-      frozen={{ top: 1, bottom: 1, left: 1, right: 1 }}
+      frozen={{ top: 1, left: 1 }}
       overscan={{ rows: 5, columns: 2 }}
-      fitColumns="stretch"
-      apiRef={apiRef}
-      style={{ height: 560 }}
-      ariaLabel="Large virtual grid"
+      style={{ height: 520 }}
     />
   )
 }
 ```
 
-All cell and range coordinates are zero-based. Range ends are inclusive.
+Coordinates are zero-based and range ends are inclusive. Keep getters, size maps, merge arrays, and renderers referentially stable.
 
-## Public API
+## Public contract
 
-The root entry intentionally exposes only the component contract:
+| Area | API |
+| --- | --- |
+| Component | `UltiGridViewport` |
+| Data | `rowCount`, `columnCount`, `getCell` |
+| Layout | defaults, sparse size maps/getters, `frozen`, `overscan`, `fitColumns`, `autoSize` |
+| Rendering | `renderCell`, styles, classes, metadata, ARIA hooks |
+| Merging | explicit, non-overlapping `MergedCellRange` rectangles, including horizontal and arbitrary 2D ranges |
+| Interaction | controlled/uncontrolled selection, keyboard navigation, TSV copy |
+| Imperative API | scroll, selection, copy through `UltiGridViewportApi` / `ApiRef` |
+| Observation | `onViewportChange`, `ViewportSnapshot` |
 
-- `UltiGridViewport`
-- `UltiGridViewportProps` and `UltiGridViewportApi`
-- cell, range, merge, frozen-edge, overscan, auto-size, viewport, and `ApiRef` types
-
-Internal axis, merge-index, virtualizer, and selection implementations are not public package subpaths. The only supported exports are:
+Only these package paths are supported:
 
 - `@ultigrid/core`
 - `@ultigrid/core/style.css`
 
-## Capabilities
+Axis, virtualizer, MergeIndex, and selection helpers are internal implementations.
 
-- Independent row and column virtualization.
-- On-demand `getCell(row, column)` access.
-- Top, bottom, left, and right frozen regions, composed into at most nine clipped panes.
-- Two-dimensional merged rectangles without per-cell expansion.
-- Default sizes, sparse `ReadonlyMap` overrides, getters, and progressive visible-content measurement.
-- Stretch-to-container behavior for narrow data and native horizontal scrolling for wide data.
-- Cell-level renderer, style, class, ARIA, and metadata hooks.
-- Click and drag selection, Shift extension, arrow/Tab/Enter navigation, and merged-cell-aware movement.
-- Spreadsheet-compatible TSV copy through keyboard and imperative APIs.
-- ARIA `grid` / `treegrid` roles and viewport callbacks.
+## Performance and memory
 
-## Performance contract
+- Row and column windows are located in `O(log N)` through typed segment trees.
+- Ordinary DOM follows the viewport, overscan, effective frozen regions, and merge fragments.
+- Sparse custom sizes use `ReadonlyMap`; the axis trees themselves use `O(Nᵣ + N𝚌)` memory.
+- A merge spanning many cells remains one indexed rectangle; Core never expands it into per-cell records.
+- `autoSize` measures rendered, non-merged cells incrementally and can trigger synchronous layout reads.
+- Copy materializes the target range and defaults to a 100,000-cell limit.
+- Custom renderers run on the main thread. Deep DOM and expensive synchronous work affect scrolling directly.
+- Extreme logical canvases remain subject to browser layout-size and native-scroll precision limits.
 
-- Logical `100,000 × 100,000` addressing does not allocate a 10-billion-cell matrix.
-- Ordinary DOM tracks the viewport, overscan, and frozen regions.
-- Sparse custom sizes should use stable `ReadonlyMap` instances.
-- `autoSize` measures rendered, non-merged cells incrementally; it is not a full-data scan.
-- Copy materializes the selected range and defaults to a 100,000-cell safety limit.
-- Custom renderers run on the main thread, so deep DOM and expensive synchronous work still affect scrolling.
-- The current engine uses one native scroll coordinate space. Browser layout-size and scroll-precision limits still apply at extreme canvas sizes.
+See the project [architecture](https://github.com/Whiskeyi/UltimateRenderTable/blob/main/docs/ARCHITECTURE.md) and [capability status](https://github.com/Whiskeyi/UltimateRenderTable/blob/main/docs/CAPABILITIES.md).
 
 ## License
 

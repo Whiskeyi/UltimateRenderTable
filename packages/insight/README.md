@@ -1,10 +1,8 @@
 # @ultigrid/insight
 
-The BI-ready React application grid built on `@ultigrid/core`.
+The BI-ready application grid built on `@ultigrid/core`. Insight adds typed row and column models, trees, vertical adjacent-value merging within columns, conditional formatting, layered custom cells, localization, and client-side export while retaining the virtualized Core viewport.
 
-`@ultigrid/insight` adds row and column models, headers, row numbers, tree semantics, conditional formatting, layered custom cells, and client-side export while retaining the core viewport engine.
-
-> Status: **0.1.0 / Alpha**. The package is ESM-only and does not make a fixed cross-device FPS promise.
+> Status: **0.1.0 / Alpha**. ESM-only; React and ReactDOM `>=18.2 <20` are peer dependencies.
 
 ## Install
 
@@ -12,15 +10,13 @@ The BI-ready React application grid built on `@ultigrid/core`.
 npm install @ultigrid/insight react react-dom
 ```
 
-React and ReactDOM `>=18.2 <20` are peer dependencies. `@ultigrid/core` is installed as a package dependency.
-
-Import one self-contained stylesheet; it includes both Insight and core styles:
+Import one stylesheet; it already contains the Core styles.
 
 ```tsx
 import '@ultigrid/insight/style.css'
 ```
 
-## Minimal usage
+## Usage
 
 ```tsx
 import {
@@ -30,11 +26,7 @@ import {
 } from '@ultigrid/insight'
 import '@ultigrid/insight/style.css'
 
-interface Sale {
-  id: number
-  region: string
-  revenue: number
-}
+interface Sale { id: number; region: string; revenue: number }
 
 const rows: Sale[] = [
   { id: 1, region: 'East', revenue: 268_000 },
@@ -43,18 +35,12 @@ const rows: Sale[] = [
 
 const columns: InsightColumnDefinition<Sale>[] = [
   defineInsightColumn<Sale, string>({
-    id: 'region',
-    header: 'Region',
-    width: 180,
+    id: 'region', header: 'Region', width: 180,
     getValue: (row) => row.region,
   }),
   defineInsightColumn<Sale, number>({
-    id: 'revenue',
-    header: 'Revenue',
-    width: 180,
+    id: 'revenue', header: 'Revenue', width: 160,
     getValue: (row) => row.revenue,
-    formatValue: (value) => `$${value.toLocaleString('en-US')}`,
-    visualStyle: { horizontalAlign: 'right', fontWeight: 700 },
     conditionalRules: [
       { id: 'bar', kind: 'dataBar', domain: [0, 300_000], color: '#24935f' },
     ],
@@ -69,107 +55,65 @@ export function SalesTable() {
       columns={columns}
       frozen={{ left: 1 }}
       stripedRows
-      fitColumns="stretch"
-      style={{ height: 480 }}
+      style={{ height: 420 }}
     />
   )
 }
 ```
 
-## Data and column sources
+## Application contract
 
-Choose exactly one row source:
+| Area | API and behavior |
+| --- | --- |
+| Rows | Exactly one of `rows`, synchronous `LazyRowSource`, or `rowModel` |
+| Columns | Exactly one of `columns` or `columnCount + getColumn`; `defineInsightColumn` preserves value types |
+| Flat/tree data | `FlatRowModel`, `TreeRowModel`, sync/async children, expansion state, ARIA tree metadata |
+| Adjacent merging | `mergeAdjacent?: false \| AdjacentMergeOptions<TRow>`; `AdjacentMergeColumn<TRow>` selects columns whose vertically consecutive equal values become single-column Core rectangles |
+| Conditional formatting | Text, background, icon, two/three-color scale, signed data bar, priority, `stopIfTrue` |
+| Custom cells | Alignment, typography, colors, images, icons, background layer, `component`, `renderContent`, `exportValue` |
+| Layout and interaction | Core sizing, fit, four-edge freezing, selection, navigation, copy, viewport callbacks |
+| Localization | English defaults with partial `localeText` overrides; business content stays caller-controlled |
 
-- `rows`: an in-memory array.
-- `rowSource`: a synchronous `LazyRowSource` backed by caller-owned paging or generated data.
-- `rowModel`: `FlatRowModel`, `TreeRowModel`, or another compatible model.
+Adjacent-value equality is application semantics: Insight derives vertical same-column ranges through `mergeAdjacent`, while Core only indexes and renders rectangles. Horizontal or arbitrary 2D ranges use explicit data-coordinate `mergedCells`.
 
-Choose exactly one column source:
+## Cell DOM
 
-- `columns`: a materialized heterogeneous column array.
-- `columnCount + getColumn(index)`: lazy columns for very wide grids.
-
-These choices are mutually exclusive in `UltiGridInsightProps`. Use `defineInsightColumn<TRow, TValue>()` to preserve each column's individual value type.
-
-## Cell composition
-
-An `InsightColumn` can provide:
-
-- `visualStyle` for alignment, type, color, spacing, wrapping, and background.
-- leading, trailing, or background `image`.
-- named `icon`, with a custom `iconResolver` if required.
-- a reusable React `component`.
-- `renderContent` for cell-specific React output.
-- `exportValue` for a stable business value when the visual content cannot be serialized.
-
-The cell DOM keeps its visual/data-bar layer separate from the content layer so decorations do not interfere with selection.
-
-## Conditional formatting
-
-Five rule kinds are available:
-
-- `text`
-- `background`
-- `icon`
-- two- or three-stop `colorScale`
-- signed `dataBar`
-
-Rules support conditions, priority, and `stopIfTrue`. They compile when props change rather than rebuilding their rule arrays for every rendered cell.
-
-## Tree rows
-
-`TreeRowModel` supports synchronous children and asynchronous `loadChildren`. Expansion and collapse update the visible row sequence, and the tree column exposes depth, loading, error, and `aria-expanded` state through the shared renderer.
-
-## Coordinates and imperative API
-
-All public Insight coordinates are zero-based **data coordinates**. Headers and row numbers are excluded consistently from:
-
-- controlled `selection` and `onSelectionChange`
-- `onViewportChange`
-- `apiRef.current.scrollToCell()`
-- `apiRef.current.getSelection()` and `copySelection()`
-- merge props and export ranges
-
-The imperative API also exposes `exportExcel`, `exportCsv`, and `exportImage`.
-
-## Export boundaries
-
-- Excel and CSV materialize the requested range in browser memory and default to a 1,000,000-cell safety limit.
-- Excel is limited to 16,384 columns and 1,048,576 total rows per worksheet, including the header.
-- Image export captures the currently laid-out table shell—the visible virtual viewport—not a full logical-table long image.
-- Custom React content should provide `exportValue` when its business value differs from the display value.
-
-## Localization
-
-Default interaction and error messages are English. Override any subset through `localeText`:
-
-```tsx
-<UltiGridInsight
-  rows={rows}
-  columns={columns}
-  localeText={{
-    expandRow: '展开此行',
-    collapseRow: '折叠此行',
-    nodeLoadError: '节点加载失败',
-  }}
-/>
+```text
+.ultigrid-cell
+└── .ultigrid-cell__content
+    └── .ultigrid-insight-cell
+        ├── visual-layer     # background image and data bar
+        └── content-layer    # images, icons, text, or a React component
 ```
 
-Column titles, cell content, and number/date formatting remain caller-controlled.
+The visual layer ignores pointer events so decorations do not interfere with selection. Text truncates to one line by default; wrapping is opt-in.
 
-## Public exports
+## Coordinates and API
 
-The root entry exposes:
+All public coordinates are zero-based data coordinates. Headers and row numbers are excluded from selection, viewport callbacks, merge ranges, scrolling, copy, and export ranges.
 
-- `UltiGridInsight`, `InsightCell`, and `defineInsightColumn`
-- `FlatRowModel`, `TreeRowModel`, and row-model types
-- Insight prop, API, row/column, cell, locale, and viewport types
-- conditional-rule and compiled-formatter types
+`UltiGridInsightApi` exposes `scrollToCell`, `getSelection`, `copySelection`, `exportExcel`, `exportCsv`, and `exportImage`.
 
-The only supported package paths are:
+Only these package paths are supported:
 
 - `@ultigrid/insight`
 - `@ultigrid/insight/style.css`
+
+The root also exports row models, public component/column/cell types, conditional-rule types, and `AdjacentMergeOptions` / `AdjacentMergeColumn`.
+
+## Performance, memory, and export boundaries
+
+- Rendering inherits Core's two-axis viewport, pane, and merge-index costs.
+- Lazy columns use a bounded 2,048-entry cache; row and row-metadata caches hold at most 512 entries each.
+- Vertical adjacent merging scans the current row sequence across configured dimensions when its inputs change; generated regions default to a 100,000-item limit.
+- Conditional rules compile when Props change; visible-cell evaluation is approximately `O(W × R)`.
+- Tree models keep the current visible sequence. Caller-owned arrays, remote pages, and caches remain caller memory.
+- Excel and CSV materialize the requested range in `O(A)` time and memory, with a default 1,000,000-cell limit.
+- Excel additionally limits a sheet to 16,384 columns and 1,048,576 rows.
+- Image export captures the currently laid-out virtual viewport, not the complete logical table.
+- Custom React renderers run on the main thread; keep their DOM and synchronous work small.
+
+See the project [architecture](https://github.com/Whiskeyi/UltimateRenderTable/blob/main/docs/ARCHITECTURE.md) and [capability status](https://github.com/Whiskeyi/UltimateRenderTable/blob/main/docs/CAPABILITIES.md).
 
 ## License
 

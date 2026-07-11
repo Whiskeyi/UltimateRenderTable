@@ -30,21 +30,32 @@ import {
   type StudioTableConfig,
 } from './studio'
 import { CapabilityOverview } from './demo/CapabilityOverview'
-import { demoSnippets } from './demo/demoSnippets'
+import { ComponentGallery } from './demo/ComponentGallery'
+import {
+  demoSnippets,
+  scenarioSnippetKeys,
+  type DemoSnippetKey,
+} from './demo/demoSnippets'
 import {
   createDemoColumnGetter,
-  createDemoMerges,
   createDemoRowSource,
   getDemoColumnWidths,
-  getDemoRowHeights,
 } from './demo/demoData'
 import { translate, useI18n, type Locale, type MessageKey } from './i18n'
 import { writeTextToClipboard } from './utils/clipboard'
 import './styles/demo.css'
 
+const ANALYSIS_MERGE_OPTIONS = { columns: [0, 1] } as const
+const ANALYSIS_SINGLE_COLUMN_MERGE_OPTIONS = { columns: [0] } as const
+
 interface ToastState {
   tone: 'success' | 'error'
   message: string
+}
+
+interface SourceView {
+  key: DemoSnippetKey
+  title: string
 }
 
 class DemoStageErrorBoundary extends Component<
@@ -90,12 +101,13 @@ export function App() {
   })
   const [metrics, setMetrics] = useState<StudioPerformanceMetrics>({})
   const [toast, setToast] = useState<ToastState | null>(null)
-  const [codeOpen, setCodeOpen] = useState(false)
+  const [sourceView, setSourceView] = useState<SourceView | null>(null)
   const [codeCopied, setCodeCopied] = useState(false)
   const toastTimerRef = useRef<number | null>(null)
   const codeCopyTimerRef = useRef<number | null>(null)
-  const codeTriggerRef = useRef<HTMLButtonElement>(null)
+  const sourceTriggerRef = useRef<HTMLButtonElement | null>(null)
   const codeCloseRef = useRef<HTMLButtonElement>(null)
+  const codePanelRef = useRef<HTMLElement>(null)
 
   const showToast = useCallback((next: ToastState) => {
     setToast(next)
@@ -109,18 +121,34 @@ export function App() {
   }, [])
 
   useEffect(() => {
-    if (!codeOpen) return
+    if (!sourceView) return
     const onKeyDown = (event: globalThis.KeyboardEvent) => {
-      if (event.key !== 'Escape') return
-      setCodeOpen(false)
-      requestAnimationFrame(() => codeTriggerRef.current?.focus())
+      if (event.key === 'Escape') {
+        setSourceView(null)
+        requestAnimationFrame(() => sourceTriggerRef.current?.focus())
+        return
+      }
+      if (event.key !== 'Tab') return
+      const focusable = Array.from(codePanelRef.current?.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), [href], [tabindex]:not([tabindex="-1"])',
+      ) ?? [])
+      if (focusable.length === 0) return
+      const first = focusable[0]!
+      const last = focusable[focusable.length - 1]!
+      if (event.shiftKey && (document.activeElement === first || !codePanelRef.current?.contains(document.activeElement))) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && (document.activeElement === last || !codePanelRef.current?.contains(document.activeElement))) {
+        event.preventDefault()
+        first.focus()
+      }
     }
     window.addEventListener('keydown', onKeyDown)
     requestAnimationFrame(() => codeCloseRef.current?.focus())
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [codeOpen])
+  }, [sourceView])
 
-  useEffect(() => setCodeCopied(false), [config.scenario])
+  useEffect(() => setCodeCopied(false), [sourceView?.key])
 
   useEffect(() => {
     let frame = 0
@@ -252,13 +280,25 @@ export function App() {
     exportRangeTooLarge: (count, limit) => t('table.exportTooLarge', { count, limit }),
   }), [t])
 
+  const openSource = useCallback((
+    key: DemoSnippetKey,
+    title: string,
+    trigger: HTMLButtonElement,
+  ) => {
+    sourceTriggerRef.current = trigger
+    setSourceView({ key, title })
+  }, [])
+
   const renderStage = useCallback(({ config: stageConfig }: { config: StudioTableConfig }) => {
     if (stageConfig.scenario === 'capabilities') {
       return <CapabilityOverview locale={locale} />
     }
+    if (stageConfig.scenario === 'gallery') {
+      return <ComponentGallery onViewSource={openSource} />
+    }
     return (
       <DemoStageErrorBoundary
-        key={`${stageConfig.rowCount}:${stageConfig.columnCount}:${stageConfig.scenario}`}
+        key={`${stageConfig.rowCount}:${stageConfig.columnCount}:${stageConfig.scenario}:${stageConfig.treeEnabled}:${stageConfig.mergeSameValueDimensions}`}
         title={t('app.propsFailed')}
         retryLabel={t('app.retry')}
       >
@@ -271,23 +311,24 @@ export function App() {
         />
       </DemoStageErrorBoundary>
     )
-  }, [handleViewport, locale, localeText, t])
+  }, [handleViewport, locale, localeText, openSource, t])
 
   const closeCode = useCallback(() => {
-    setCodeOpen(false)
-    requestAnimationFrame(() => codeTriggerRef.current?.focus())
+    setSourceView(null)
+    requestAnimationFrame(() => sourceTriggerRef.current?.focus())
   }, [])
 
   const copyCode = useCallback(async () => {
+    if (!sourceView) return
     try {
-      await writeTextToClipboard(demoSnippets[config.scenario])
+      await writeTextToClipboard(demoSnippets[sourceView.key])
       setCodeCopied(true)
       if (codeCopyTimerRef.current !== null) window.clearTimeout(codeCopyTimerRef.current)
       codeCopyTimerRef.current = window.setTimeout(() => setCodeCopied(false), 1_400)
     } catch {
       showToast({ tone: 'error', message: t('error.copy') })
     }
-  }, [config.scenario, showToast, t])
+  }, [showToast, sourceView, t])
 
   const scenarioLabel = t(`scenario.${config.scenario}` as MessageKey)
 
@@ -302,12 +343,15 @@ export function App() {
         onExport={(format, config) => handleExport(format, config)}
         toolbarActions={(
           <button
-            ref={codeTriggerRef}
             type="button"
             className="studio-action-button demo-code-trigger"
             data-testid="demo-code-trigger"
             aria-label={t('demo.code.open')}
-            onClick={() => setCodeOpen(true)}
+            onClick={(event) => openSource(
+              scenarioSnippetKeys[config.scenario],
+              scenarioLabel,
+              event.currentTarget,
+            )}
           >
             <Code2 size={16} />
             <span>{t('demo.code.open')}</span>
@@ -324,7 +368,7 @@ export function App() {
           <button type="button" aria-label={t('app.toast.close')} onClick={() => setToast(null)}><X size={13} /></button>
         </div>
       ) : null}
-      {codeOpen ? (
+      {sourceView ? (
         <div
           className="demo-code-backdrop"
           onMouseDown={(event) => {
@@ -332,6 +376,7 @@ export function App() {
           }}
         >
           <section
+            ref={codePanelRef}
             className="demo-code-panel"
             role="dialog"
             aria-modal="true"
@@ -340,7 +385,7 @@ export function App() {
             <header className="demo-code-head">
               <div>
                 <span><Code2 size={16} /> TSX</span>
-                <h2 id="demo-code-title">{t('demo.code.title', { scenario: scenarioLabel })}</h2>
+                <h2 id="demo-code-title">{t('demo.code.title', { scenario: sourceView.title })}</h2>
                 <p>{t('demo.code.subtitle')}</p>
               </div>
               <div>
@@ -363,7 +408,7 @@ export function App() {
               <span>@ultigrid/core</span>
               <span>@ultigrid/insight</span>
             </div>
-            <pre><code>{demoSnippets[config.scenario]}</code></pre>
+            <pre tabIndex={0}><code>{demoSnippets[sourceView.key]}</code></pre>
           </section>
         </div>
       ) : null}
@@ -387,27 +432,18 @@ const DemoTableStage = memo(function DemoTableStage({
   localeText,
 }: DemoTableStageProps) {
   const [toggledTreeRows, setToggledTreeRows] = useState<Set<number>>(() => new Set())
+  const treeEnabled = config.scenario === 'analysis' && config.treeEnabled
   const rowSource = useMemo(
-    () => createDemoRowSource(
-      config.rowCount,
-      config.scenario,
-      toggledTreeRows,
-      config.treeExpandedByDefault,
-    ),
-    [config.rowCount, config.scenario, config.treeExpandedByDefault, toggledTreeRows],
+    () => createDemoRowSource(config.rowCount, {
+      treeEnabled,
+      toggledRows: toggledTreeRows,
+      expandedByDefault: config.treeExpandedByDefault,
+    }),
+    [config.rowCount, config.treeExpandedByDefault, toggledTreeRows, treeEnabled],
   )
   const getColumn = useMemo(
-    () => createDemoColumnGetter(config.scenario, locale),
-    [config.scenario, locale],
-  )
-  const merges = useMemo(
-    () => createDemoMerges(
-      config.rowCount,
-      config.columnCount,
-      config.mergedCellCount,
-      config.scenario,
-    ),
-    [config.rowCount, config.columnCount, config.mergedCellCount, config.scenario],
+    () => createDemoColumnGetter(config.scenario, locale, { treeEnabled }),
+    [config.scenario, locale, treeEnabled],
   )
 
   const toggleRow = useCallback((rowId: string | number) => {
@@ -421,15 +457,23 @@ const DemoTableStage = memo(function DemoTableStage({
   }, [])
 
   return (
-    <div className={`demo-report demo-report--${config.density} demo-report--scenario-${config.scenario}`}>
+    <div className={[
+      'demo-report',
+      `demo-report--${config.density}`,
+      `demo-report--scenario-${config.scenario}`,
+      treeEnabled ? 'demo-report--tree-enabled' : '',
+    ].filter(Boolean).join(' ')}>
       <div className="demo-report-table">
         <UltiGridInsight
           rowSource={rowSource}
           columnCount={config.columnCount}
           getColumn={getColumn}
-          columnWidths={getDemoColumnWidths(config.scenario)}
-          rowHeights={getDemoRowHeights(config.scenario)}
-          mergedCells={merges}
+          columnWidths={getDemoColumnWidths(config.scenario, { treeEnabled })}
+          mergeAdjacent={config.scenario === 'analysis' && config.mergeSameValueDimensions
+            ? config.columnCount > 1
+              ? ANALYSIS_MERGE_OPTIONS
+              : ANALYSIS_SINGLE_COLUMN_MERGE_OPTIONS
+            : false}
           defaultRowHeight={config.rowHeight}
           defaultColumnWidth={config.columnWidth}
           frozen={{
@@ -441,12 +485,11 @@ const DemoTableStage = memo(function DemoTableStage({
           overscan={{ rows: config.overscanRows, columns: config.overscanColumns }}
           fitColumns={config.fitColumns ? 'stretch' : 'none'}
           autoSize={{ rows: config.autoRowHeight, columns: false }}
-          contentVersion={`${config.scenario}:${locale}`}
-          showHeader={config.scenario !== 'merged'}
+          contentVersion={`${config.scenario}:${locale}:${treeEnabled}:${config.mergeSameValueDimensions}`}
           showRowNumbers={config.showRowNumbers}
           showGridLines={config.showGridLines}
           stripedRows={config.stripedRows}
-          treeColumnId={config.scenario === 'tree' ? 'dimension' : undefined}
+          treeColumnId={treeEnabled ? 'dimension' : undefined}
           onToggleRow={toggleRow}
           onViewportChange={onViewportChange}
           apiRef={tableApiRef}

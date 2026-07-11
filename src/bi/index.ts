@@ -3,6 +3,10 @@ export { defineInsightColumn, UltiGridInsight } from './UltiGridInsight'
 export { createRowMeta, FlatRowModel, TreeRowModel } from './rowModel'
 
 export type {
+  AdjacentMergeColumn,
+  AdjacentMergeOptions,
+} from './adjacentMerge'
+export type {
   InsightColumn,
   InsightColumnDefinition,
   InsightColumnsProps,

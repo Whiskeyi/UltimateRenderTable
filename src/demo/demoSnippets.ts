@@ -1,207 +1,228 @@
-export const capabilities = String.raw`import { useMemo } from 'react'
-import { UltiGridViewport, type MergedCellRange } from '@ultigrid/core'
+import type { StudioScenario } from '../studio'
 
-const merges: MergedCellRange[] = [
-  { rowStart: 0, rowEnd: 0, columnStart: 0, columnEnd: 10_500 },
+export const demoSnippets = {
+  capabilities: String.raw`import { UltiGridViewport } from '@ultigrid/core'
+import { UltiGridInsight } from '@ultigrid/insight'
+
+// Studio demonstrates both public layers; it is not an npm package.
+export const layers = {
+  studio: 'interactive demos and live props',
+  insight: UltiGridInsight,
+  core: UltiGridViewport,
+}`,
+
+  gallery: String.raw`import { UltiGridViewport } from '@ultigrid/core'
+import { UltiGridInsight } from '@ultigrid/insight'
+
+const examples = [
+  { id: 'virtualization', component: UltiGridViewport },
+  { id: 'business-grid', component: UltiGridInsight },
 ]
 
-export function ExtremeGrid() {
-  const rowHeights = useMemo(() => new Map([[0, 52], [9, 64]]), [])
-  const columnWidths = useMemo(() => new Map([[0, 220], [3, 168]]), [])
+export function ComponentGallery() {
+  return examples.map(({ id, component: Example }) => (
+    <section key={id}><Example /></section>
+  ))
+}`,
 
+  analysis: String.raw`import { UltiGridInsight } from '@ultigrid/insight'
+
+export function BusinessAnalysis({
+  treeEnabled,
+  mergeSameValueDimensions,
+}) {
+  return (
+    <UltiGridInsight
+      rowSource={treeEnabled ? treeRows : flatRows}
+      columns={columns}
+      treeColumnId={treeEnabled ? 'region' : undefined}
+      mergeAdjacent={mergeSameValueDimensions
+        ? { columns: [0, 1] }
+        : false}
+      frozen={{ top: 1, left: 2 }}
+      stripedRows
+      style={{ height: 560 }}
+    />
+  )
+}`,
+
+  conditional: String.raw`import { UltiGridInsight } from '@ultigrid/insight'
+
+const columns = [{
+  id: 'revenue',
+  header: 'Revenue',
+  getValue: (row) => row.revenue,
+  conditionalRules: [
+    { id: 'bar', kind: 'dataBar', domain: [0, 300000], color: '#24935f' },
+    { id: 'high', kind: 'text', when: { operator: 'greaterThan', value: 220000 },
+      style: { color: '#126b44', fontWeight: 700 } },
+  ],
+}]
+
+export function ConditionalTable({ rows }) {
+  return <UltiGridInsight rows={rows} columns={columns} />
+}`,
+
+  virtualization: String.raw`import { UltiGridViewport } from '@ultigrid/core'
+
+export function LogicalGrid() {
   return (
     <UltiGridViewport
       rowCount={100_000}
       columnCount={100_000}
-      getCell={(row, column) => ({
-        value: row * 100_000 + column,
-        text: row + ':' + column,
-      })}
-      rowHeights={rowHeights}
-      columnWidths={columnWidths}
-      mergedCells={merges}
-      frozen={{ top: 2, bottom: 1, left: 2, right: 1 }}
-      overscan={{ rows: 6, columns: 3 }}
-      autoSize={{ rows: true }}
-      fitColumns="stretch"
-      style={{ height: 640 }}
-      ariaLabel="Extreme virtual grid"
+      getCell={(row, column) => ({ text: row + ':' + column })}
+      overscan={{ rows: 5, columns: 2 }}
+      style={{ height: 420 }}
     />
   )
-}`
+}`,
 
-export const analysis = String.raw`import {
-  UltiGridInsight,
-  type InsightColumn,
-  type LazyRowSource,
-} from '@ultigrid/insight'
+  frozen: String.raw`import { UltiGridViewport } from '@ultigrid/core'
 
-type Sale = { id: number; region: string; revenue: number; owner: string }
+export function FourSideFrozenGrid() {
+  return (
+    <UltiGridViewport
+      rowCount={200}
+      columnCount={60}
+      getCell={(row, column) => ({ text: row + ':' + column })}
+      frozen={{ top: 1, bottom: 1, left: 1, right: 1 }}
+      style={{ height: 420 }}
+    />
+  )
+}`,
 
-const rows: LazyRowSource<Sale> = {
-  rowCount: 100_000,
-  getRow: (index) => ({
-    id: index,
-    region: ['East', 'South', 'North'][index % 3]!,
-    revenue: 48_000 + index * 37,
-    owner: ['Lin', 'Zhou', 'Chen'][index % 3]!,
-  }),
-  getRowId: (row) => row.id,
-}
+  sizing: String.raw`import { UltiGridViewport } from '@ultigrid/core'
 
-const columns: InsightColumn<Sale>[] = [
-  { id: 'region', header: 'Region', getValue: (row) => row.region, width: 180 },
+const rowHeights = new Map([[1, 64], [4, 52]])
+const columnWidths = new Map([[0, 220], [2, 96]])
+
+export function AdaptiveGeometryGrid() {
+  return (
+    <UltiGridViewport
+      rowCount={80}
+      columnCount={8}
+      getCell={(row, column) => ({ text: 'Cell ' + row + ':' + column })}
+      rowHeights={rowHeights}
+      columnWidths={columnWidths}
+      autoSize={{ rows: true, columns: false }}
+      fitColumns="stretch"
+    />
+  )
+}`,
+
+  mergeAdjacent: String.raw`import { UltiGridInsight } from '@ultigrid/insight'
+
+const columns = [
+  { id: 'region', header: 'Region', getValue: (row) => row.region },
+  { id: 'product', header: 'Product', getValue: (row) => row.product },
   {
     id: 'revenue',
     header: 'Revenue',
     getValue: (row) => row.revenue,
-    formatValue: (value) => Number(value).toLocaleString(),
-    visualStyle: { horizontalAlign: 'right', fontWeight: 700 },
+    renderContent: ({ displayValue, row, rowIndex }) => rowIndex === 0
+      ? <strong>{displayValue} · {row.orders} orders · {row.margin}%</strong>
+      : displayValue,
   },
-  {
-    id: 'owner',
-    header: 'Owner',
-    getValue: (row) => row.owner,
-    renderContent: ({ displayValue }) => <strong>{displayValue}</strong>,
-  },
+  { id: 'orders', header: 'Orders', getValue: (row) => row.orders },
+  { id: 'margin', header: 'Margin', getValue: (row) => row.margin },
 ]
 
-export function AnalysisTable() {
+export function DimensionMergeTable({ rows }) {
   return (
     <UltiGridInsight
-      rowSource={rows}
+      rows={rows}
       columns={columns}
-      frozen={{ top: 1, left: 1 }}
-      fitColumns="stretch"
-      autoSize={{ rows: true }}
-      stripedRows
-      style={{ height: 640 }}
+      mergeAdjacent={{ columns: [0, 1] }}
+      mergedCells={[{
+        id: 'horizontal-note', rowStart: 0, rowEnd: 0,
+        columnStart: 2, columnEnd: 4,
+      }]}
     />
   )
-}`
+}`,
 
-export const tree = String.raw`import { useMemo } from 'react'
-import { TreeRowModel, UltiGridInsight, type InsightColumn } from '@ultigrid/insight'
+  selection: String.raw`import { useRef, useState } from 'react'
+import { UltiGridViewport } from '@ultigrid/core'
 
-type Node = { id: string; label: string; value: number; children?: Node[] }
+export function SelectionGrid() {
+  const apiRef = useRef(null)
+  const [selection, setSelection] = useState(null)
+  return (
+    <>
+      <button onClick={() => apiRef.current?.copySelection()}>Copy TSV</button>
+      <UltiGridViewport
+        rowCount={200}
+        columnCount={50}
+        getCell={(row, column) => ({ text: row + ':' + column })}
+        selection={selection}
+        onSelectionChange={setSelection}
+        apiRef={apiRef}
+      />
+    </>
+  )
+}`,
 
-const roots: Node[] = [
-  {
-    id: 'growth',
-    label: 'Growth',
-    value: 128,
-    children: [{ id: 'commerce', label: 'Commerce', value: 76 }],
-  },
-]
+  renderer: String.raw`import { UltiGridInsight } from '@ultigrid/insight'
 
-export function TreeTable() {
-  const model = useMemo(() => new TreeRowModel(roots, {
-    getRowId: (row) => row.id,
-    hasChildren: (row) => Boolean(row.children?.length),
-    getChildren: (row) => row.children ?? [],
-    defaultExpanded: (_row, depth) => depth === 0,
-  }), [])
-  const columns = useMemo<InsightColumn<Node>[]>(() => [
-    { id: 'name', header: 'Portfolio', getValue: (row) => row.label, width: 260 },
-    { id: 'value', header: 'Value', getValue: (row) => row.value },
-  ], [])
+function StatusCell({ displayValue }) {
+  return <strong className="status-pill">{displayValue}</strong>
+}
 
+const columns = [{
+  id: 'owner',
+  header: 'Owner',
+  getValue: (row) => row.owner,
+  image: (context) => ({ src: context.row.avatar, width: 24, height: 24 }),
+}, {
+  id: 'status',
+  header: 'Status',
+  getValue: (row) => row.status,
+  component: StatusCell,
+  visualStyle: { horizontalAlign: 'center', color: '#176f49' },
+}]
+
+export function CustomCellTable({ rows }) {
+  return <UltiGridInsight rows={rows} columns={columns} />
+}`,
+
+  tree: String.raw`import { UltiGridInsight } from '@ultigrid/insight'
+
+export function TreeTable({ rowSource, onToggleRow }) {
   return (
     <UltiGridInsight
-      rowModel={model}
+      rowSource={rowSource}
       columns={columns}
       treeColumnId="name"
-      onToggleRow={async (id, expanded) => {
-        if (expanded) await model.expand(id)
-        else model.collapse(id)
-      }}
-      frozen={{ left: 1 }}
-      style={{ height: 640 }}
+      onToggleRow={onToggleRow}
+      ariaLabel="Hierarchy table"
     />
   )
-}`
+}`,
 
-export const conditional = String.raw`import { UltiGridInsight, type InsightColumn } from '@ultigrid/insight'
+  conditionalMini: String.raw`import { UltiGridInsight } from '@ultigrid/insight'
 
-type Metric = { region: string; score: number }
+const columns = [{
+  id: 'score',
+  header: 'Score',
+  getValue: (row) => row.score,
+  conditionalRules: [
+    { id: 'scale', kind: 'colorScale', domain: [0, 100], midpoint: 50,
+      colors: ['#f8d7d4', '#fff5d6', '#dff3e7'] },
+    { id: 'icon', kind: 'icon', when: { operator: 'greaterThanOrEqual', value: 85 },
+      icon: { name: 'up', color: '#168052' } },
+  ],
+}]
 
-const rows: Metric[] = [
-  { region: 'East', score: 92 },
-  { region: 'West', score: 43 },
-]
-
-const columns: InsightColumn<Metric>[] = [
-  { id: 'region', header: 'Region', getValue: (row) => row.region },
-  {
-    id: 'score',
-    header: 'Score',
-    getValue: (row) => row.score,
-    conditionalRules: [
-      { id: 'text', kind: 'text', when: { operator: 'greaterThan', value: 80 }, style: { color: '#147548', fontWeight: 750 } },
-      { id: 'fill', kind: 'background', when: { operator: 'lessThan', value: 50 }, color: '#fde9e7' },
-      { id: 'icon', kind: 'icon', when: { operator: 'greaterThan', value: 80 }, icon: { name: 'check', color: '#168653' } },
-      { id: 'scale', kind: 'colorScale', domain: [0, 100], colors: ['#f6dddd', '#fff1c7', '#cfeeda'] },
-      { id: 'bar', kind: 'dataBar', domain: [0, 100], color: '#27915b' },
-    ],
-  },
-]
-
-export function ConditionalTable() {
-  return <UltiGridInsight rows={rows} columns={columns} style={{ height: 520 }} />
-}`
-
-export const merged = String.raw`import { useRef } from 'react'
-import type { MergedCellRange } from '@ultigrid/core'
-import {
-  UltiGridInsight,
-  type InsightColumn,
-  type LazyRowSource,
-  type UltiGridInsightApi,
-} from '@ultigrid/insight'
-
-type PlanningRow = { index: number }
-
-const rows: LazyRowSource<PlanningRow> = {
-  rowCount: 100_000,
-  getRow: (index) => ({ index }),
-}
-const merges: MergedCellRange[] = [
-  { id: 'wide', rowStart: 0, rowEnd: 0, columnStart: 0, columnEnd: 10_500 },
-  { id: 'tall', rowStart: 2, rowEnd: 10_500, columnStart: 0, columnEnd: 0 },
-]
-const getColumn = (column: number): InsightColumn<PlanningRow> => ({
-  id: 'period-' + column,
-  header: 'Period ' + column,
-  getValue: (row) => row.index * 100_000 + column,
-})
-
-export function MergedCanvas() {
-  const apiRef = useRef<UltiGridInsightApi | null>(null)
-  return (
-    <section>
-      <button onClick={() => void apiRef.current?.exportExcel('planning')}>Excel</button>
-      <button onClick={() => void apiRef.current?.exportImage('planning')}>PNG</button>
-      <UltiGridInsight
-        rowSource={rows}
-        columnCount={100_000}
-        getColumn={getColumn}
-        mergedCells={merges}
-        showHeader={false}
-        showRowNumbers={false}
-        fitColumns="none"
-        apiRef={apiRef}
-        style={{ height: 640 }}
-      />
-    </section>
-  )
-}`
-
-export const demoSnippets = Object.freeze({
-  capabilities,
-  analysis,
-  tree,
-  conditional,
-  merged,
-})
+export function SignalTable({ rows }) {
+  return <UltiGridInsight rows={rows} columns={columns} />
+}`,
+} as const
 
 export type DemoSnippetKey = keyof typeof demoSnippets
+
+export const scenarioSnippetKeys: Record<StudioScenario, DemoSnippetKey> = {
+  capabilities: 'capabilities',
+  gallery: 'gallery',
+  analysis: 'analysis',
+  conditional: 'conditional',
+}

@@ -759,9 +759,11 @@ export function UltiGridViewport<TValue = CellPrimitive, TMeta = unknown>(
     const focus = selectionModelRef.current?.focus
     const active = Boolean(selection && focus && focus.row === row && focus.column === column)
     const text = cellText(source, row, column)
-    const content = renderCell && renderCustomContent
-      ? renderCell({ row, column, cell: source, selected, active, merged, range: selection })
-      : text
+    const content = !renderCustomContent
+      ? null
+      : renderCell
+        ? renderCell({ row, column, cell: source, selected, active, merged, range: selection })
+        : text
     const x = columnAxis.getOffset(bounds.columnStart) - pane.columns.coordinateBase
     const y = rowAxis.getOffset(bounds.rowStart) - pane.rows.coordinateBase
     const width = columnAxis.getOffset(bounds.columnEnd + 1) - columnAxis.getOffset(bounds.columnStart)
@@ -800,7 +802,7 @@ export function UltiGridViewport<TValue = CellPrimitive, TMeta = unknown>(
         data-column={column}
         data-row-end={bounds.rowEnd}
         data-column-end={bounds.columnEnd}
-        title={renderCell ? undefined : text}
+        title={!renderCustomContent || renderCell ? undefined : text}
         onPointerDown={(event) => beginSelection(address, event, source)}
         onPointerEnter={() => extendSelection(address)}
       >
