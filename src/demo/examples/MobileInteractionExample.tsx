@@ -1,5 +1,4 @@
 import {
-  BatteryMedium,
   Signal,
   Wifi,
 } from 'lucide-react'
@@ -113,6 +112,11 @@ export default function MobileInteractionExample({ t }: GalleryExampleProps) {
             <div
               className="component-gallery__mobile-device"
             >
+              <span className="component-gallery__mobile-device-control component-gallery__mobile-device-control--action" aria-hidden="true" />
+              <span className="component-gallery__mobile-device-control component-gallery__mobile-device-control--volume-up" aria-hidden="true" />
+              <span className="component-gallery__mobile-device-control component-gallery__mobile-device-control--volume-down" aria-hidden="true" />
+              <span className="component-gallery__mobile-device-control component-gallery__mobile-device-control--side" aria-hidden="true" />
+              <span className="component-gallery__mobile-device-control component-gallery__mobile-device-control--camera" aria-hidden="true" />
               <span className="component-gallery__mobile-device-island" aria-hidden="true" />
               <div
                 className="component-gallery__mobile-screen"
@@ -120,8 +124,12 @@ export default function MobileInteractionExample({ t }: GalleryExampleProps) {
                 data-viewport-height={DEVICE_HEIGHT}
               >
                 <div className="component-gallery__mobile-statusbar" aria-hidden="true">
-                  <span>9:41</span>
-                  <span><Signal size={10} /><Wifi size={10} /><BatteryMedium size={12} /></span>
+                  <span className="component-gallery__mobile-status-time">9:41</span>
+                  <span className="component-gallery__mobile-status-icons">
+                    <Signal size={14} strokeWidth={2.8} />
+                    <Wifi size={14} strokeWidth={2.8} />
+                    <span className="component-gallery__mobile-battery"><i /></span>
+                  </span>
                 </div>
                 <header className="component-gallery__mobile-appbar">
                   <span>

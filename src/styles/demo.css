@@ -1401,6 +1401,11 @@
   background: #fafcfb;
 }
 
+.component-gallery__preview[data-example='export'] .component-gallery__example-toolbar {
+  justify-content: flex-end;
+  gap: 6px;
+}
+
 .component-gallery__example-toolbar span,
 .component-gallery__example-toolbar button {
   display: inline-flex;
@@ -1557,17 +1562,20 @@
 .component-gallery__mobile-device {
   position: relative;
   box-sizing: border-box;
-  width: 393px;
-  min-width: 393px;
-  height: 768px;
-  min-height: 768px;
+  width: 389px;
+  min-width: 389px;
+  height: 764px;
+  min-height: 764px;
   flex: 0 0 auto;
   margin-block: auto;
-  padding: 8px;
-  border: 1px solid #0d1611;
-  border-radius: 46px;
-  background: #17211b;
-  box-shadow: 0 20px 48px rgb(25 42 33 / 20%), inset 0 0 0 1px rgb(255 255 255 / 10%);
+  padding: 6px;
+  border: 1px solid #48504b;
+  border-radius: 53px;
+  background: linear-gradient(145deg, #555e58 0%, #111612 18%, #080b09 52%, #343b36 82%, #0d110e 100%);
+  box-shadow:
+    0 22px 50px rgb(20 32 25 / 16%),
+    0 7px 16px rgb(20 32 25 / 9%),
+    inset 0 0 0 1px rgb(255 255 255 / 15%);
 }
 
 .component-gallery__mobile-screen {
@@ -1578,40 +1586,150 @@
   min-width: 0;
   min-height: 0;
   aspect-ratio: 375 / 750;
-  grid-template-rows: 24px 46px minmax(0, 1fr) 18px;
+  grid-template-rows: 50px 52px minmax(0, 1fr) 24px;
   overflow: hidden;
-  border-radius: 37px;
+  border-radius: 46px;
   background: #fff;
+  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 18%);
+}
+
+.component-gallery__mobile-device-control {
+  position: absolute;
+  z-index: 0;
+  width: 3px;
+  border: 1px solid #3e4641;
+  background: linear-gradient(90deg, #171c18, #69716c 58%, #202621);
+  box-shadow: 0 2px 4px rgb(9 14 11 / 24%);
+  pointer-events: none;
+}
+
+.component-gallery__mobile-device-control--action {
+  top: 96px;
+  left: -4px;
+  height: 27px;
+  border-radius: 3px 0 0 3px;
+}
+
+.component-gallery__mobile-device-control--volume-up {
+  top: 142px;
+  left: -4px;
+  height: 49px;
+  border-radius: 3px 0 0 3px;
+}
+
+.component-gallery__mobile-device-control--volume-down {
+  top: 202px;
+  left: -4px;
+  height: 49px;
+  border-radius: 3px 0 0 3px;
+}
+
+.component-gallery__mobile-device-control--side {
+  top: 157px;
+  right: -4px;
+  height: 76px;
+  border-radius: 0 3px 3px 0;
+}
+
+.component-gallery__mobile-device-control--camera {
+  top: 285px;
+  right: -4px;
+  height: 42px;
+  border-radius: 0 3px 3px 0;
 }
 
 .component-gallery__mobile-device-island {
   position: absolute;
-  top: 13px;
+  top: 17px;
   left: 50%;
   z-index: 6;
-  width: 62px;
-  height: 17px;
+  width: 114px;
+  height: 32px;
+  overflow: hidden;
+  border: 1px solid #000;
   border-radius: 999px;
-  background: #0d1510;
+  background: #030504;
+  box-shadow:
+    0 1px 2px rgb(0 0 0 / 30%),
+    inset 0 0 0 1px rgb(255 255 255 / 3%);
   pointer-events: none;
   transform: translateX(-50%);
 }
 
+.component-gallery__mobile-device-island::after {
+  position: absolute;
+  top: 50%;
+  right: 7px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 65% 32%, #283e52 0, #0a1520 34%, #020403 72%);
+  box-shadow: 0 0 0 1px rgb(255 255 255 / 3%);
+  content: '';
+  transform: translateY(-50%);
+}
+
 .component-gallery__mobile-statusbar {
+  position: relative;
+  z-index: 5;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 14px;
-  color: #253129;
-  font-family: var(--font-mono, monospace);
-  font-size: 8px;
-  font-weight: 720;
+  padding: 5px 20px 0;
+  color: #111512;
+  background: linear-gradient(180deg, #fff 0%, #fcfdfc 100%);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+  font-size: 12px;
+  font-weight: 640;
+  letter-spacing: -0.01em;
 }
 
-.component-gallery__mobile-statusbar > span:last-child {
+.component-gallery__mobile-status-time {
+  min-width: 46px;
+  text-align: center;
+}
+
+.component-gallery__mobile-status-icons {
   display: inline-flex;
+  min-width: 46px;
   align-items: center;
-  gap: 3px;
+  justify-content: flex-end;
+  gap: 5px;
+}
+
+.component-gallery__mobile-status-icons svg {
+  display: block;
+  flex: 0 0 auto;
+}
+
+.component-gallery__mobile-battery {
+  position: relative;
+  box-sizing: border-box;
+  width: 20px;
+  height: 10px;
+  flex: 0 0 auto;
+  padding: 1px;
+  border: 1px solid rgb(17 21 18 / 75%);
+  border-radius: 3px;
+}
+
+.component-gallery__mobile-battery::after {
+  position: absolute;
+  top: 2px;
+  right: -3px;
+  width: 2px;
+  height: 4px;
+  border-radius: 0 1px 1px 0;
+  background: rgb(17 21 18 / 55%);
+  content: '';
+}
+
+.component-gallery__mobile-battery i {
+  display: block;
+  width: 13px;
+  height: 100%;
+  border-radius: 1px;
+  background: #111512;
 }
 
 .component-gallery__mobile-appbar {
@@ -1620,9 +1738,10 @@
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  padding: 0 12px;
+  padding: 0 16px;
   border-bottom: 1px solid #e2e8e4;
-  background: #fbfcfb;
+  background: rgb(251 252 251 / 94%);
+  backdrop-filter: blur(12px);
 }
 
 .component-gallery__mobile-appbar > span,
@@ -1634,17 +1753,18 @@
 
 .component-gallery__mobile-appbar strong {
   overflow: hidden;
-  color: #24332b;
-  font-size: 11px;
-  font-weight: 760;
+  color: #17221b;
+  font-size: 13px;
+  font-weight: 740;
+  letter-spacing: -0.02em;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .component-gallery__mobile-appbar > span small {
-  margin-top: 2px;
-  color: #819087;
-  font-size: 8px;
+  margin-top: 3px;
+  color: #758279;
+  font-size: 9px;
 }
 
 .component-gallery__mobile-live {
@@ -1652,9 +1772,13 @@
   flex: 0 0 auto;
   align-items: center;
   gap: 5px;
+  padding: 5px 8px;
   color: #246c49;
-  font-size: 8px;
-  font-weight: 700;
+  border: 1px solid #dcebe2;
+  border-radius: 999px;
+  background: #f3f8f5;
+  font-size: 9px;
+  font-weight: 720;
 }
 
 .component-gallery__mobile-live i {
@@ -1682,12 +1806,12 @@
 
 .component-gallery__mobile-home-indicator {
   display: block;
-  width: 78px;
-  height: 4px;
+  width: 118px;
+  height: 5px;
   align-self: center;
   justify-self: center;
   border-radius: 999px;
-  background: #1b261f;
+  background: #111512;
   pointer-events: none;
 }
 

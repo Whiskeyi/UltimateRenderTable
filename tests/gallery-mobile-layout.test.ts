@@ -50,7 +50,7 @@ describe('gallery mobile layout contract', () => {
       /\.component-gallery__mobile-body\s*\{[^}]*grid-template-areas:\s*'device details'[^}]*grid-template-columns:\s*minmax\(0, 1fr\) minmax\(170px, 200px\)/s,
     )
     expect(demoCss).toMatch(
-      /\.component-gallery__mobile-device\s*\{[^}]*box-sizing:\s*border-box[^}]*width:\s*393px[^}]*min-width:\s*393px[^}]*height:\s*768px[^}]*min-height:\s*768px[^}]*border-radius:\s*46px/s,
+      /\.component-gallery__mobile-device\s*\{[^}]*box-sizing:\s*border-box[^}]*width:\s*389px[^}]*min-width:\s*389px[^}]*height:\s*764px[^}]*min-height:\s*764px[^}]*padding:\s*6px[^}]*border-radius:\s*53px/s,
     )
     expect(demoCss).toMatch(
       /\.component-gallery__mobile-canvas\s*\{[^}]*overflow:\s*auto/s,
@@ -58,6 +58,14 @@ describe('gallery mobile layout contract', () => {
     expect(demoCss).toMatch(
       /\.component-gallery__mobile-screen\s*\{[^}]*box-sizing:\s*border-box[^}]*width:\s*375px[^}]*height:\s*750px[^}]*aspect-ratio:\s*375 \/ 750[^}]*overflow:\s*hidden/s,
     )
+    expect(demoCss).toMatch(
+      /\.component-gallery__mobile-screen\s*\{[^}]*grid-template-rows:\s*50px 52px minmax\(0, 1fr\) 24px/s,
+    )
+    expect(demoCss).toMatch(
+      /\.component-gallery__mobile-device-island\s*\{[^}]*width:\s*114px[^}]*height:\s*32px/s,
+    )
+    expect(mobileExampleSource).toContain('component-gallery__mobile-status-icons')
+    expect(mobileExampleSource).toContain('component-gallery__mobile-battery')
   })
 
   it('scrolls instead of shrinking the fixed device in narrow viewports', () => {
