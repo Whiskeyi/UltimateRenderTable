@@ -1,30 +1,30 @@
-**中文** | [English](README.en.md)
+[中文](README.zh-CN.md) | **English**
 
 # UltiGrid
 
-面向超大二维数据的 React DOM 表格工程。仓库由 **Studio、应用层表格和表格渲染底座** 组成：Studio 用于演示与调试，`@ultigrid/insight` 提供 BI 表格能力，`@ultigrid/core` 负责窗口化渲染热路径。
+A React DOM grid stack for large two-dimensional datasets. The repository combines **Studio**, an **application grid**, and a **grid rendering foundation**. Studio provides demos and live configuration, `@ultigrid/insight` provides BI-ready table semantics, and `@ultigrid/core` owns the virtualized rendering hot path.
 
-UltiGrid 将 `100,000 × 100,000` 视为逻辑坐标空间。数据按坐标读取，行列同时虚拟化，DOM 主要随可见窗口、overscan 与固定区域增长，而不是随完整矩阵面积增长。
+UltiGrid treats `100,000 × 100,000` as a logical coordinate space. Data is read by coordinate, rows and columns are virtualized together, and DOM size follows the viewport, overscan, and frozen regions rather than the full matrix.
 
-> 当前版本为 **0.1.0 / Alpha**。项目不承诺跨设备固定 FPS；性能结论应基于明确的浏览器、硬件、数据与渲染器配置。
+> Current status: **0.1.0 / Alpha**. The project does not promise a fixed cross-device FPS; performance results need an explicit browser, device, dataset, and renderer configuration.
 
-## 三层仓库架构
+## Three-layer repository architecture
 
-| 层 | 目录 / 产物 | 职责 |
+| Layer | Directory / artifact | Responsibility |
 | --- | --- | --- |
-| Studio 交互层 | `src/studio`、`src/demo` | 可交互 Demo、实时 Props/JSON、真实源码编辑与预览、i18n、全屏与诊断；不发布 npm |
-| 应用层表格 | `src/bi` → `@ultigrid/insight` | 行列模型、树形、同列纵向相邻同值合并、条件格式、自定义单元格与导出 |
-| 表格渲染底座 | `src/core` → `@ultigrid/core` | Axis、双轴虚拟化、四侧固定、矩形合并、选择、导航、复制与 DOM |
+| Studio | `src/studio`, `src/demo` | Interactive demos, live Props/JSON, real-source editing and preview, i18n, fullscreen, and diagnostics; not published to npm |
+| Application grid | `src/bi` → `@ultigrid/insight` | Row and column models, trees, vertical adjacent-value merging within columns, conditional formatting, custom cells, and export |
+| Grid rendering foundation | `src/core` → `@ultigrid/core` | Axis, two-axis virtualization, four-edge freezing, rectangle merges, selection, navigation, copy, and DOM |
 
 ```text
-Studio ──演示/配置──▶ @ultigrid/insight ──业务语义──▶ @ultigrid/core ──▶ 可见范围 DOM
+Studio ──demo/config──▶ @ultigrid/insight ──domain semantics──▶ @ultigrid/core ──▶ viewport DOM
 ```
 
-应用层表格与渲染底座均以 ESM 包发布，支持 React 与 ReactDOM `>=18.2 <20`。Insight 依赖 Core，且 `@ultigrid/insight/style.css` 已包含 Core 样式。
+The application grid and rendering foundation ship as ESM packages and support React and ReactDOM `>=18.2 <20`. Insight depends on Core, and `@ultigrid/insight/style.css` already includes the Core styles.
 
-## 快速开始
+## Quick start
 
-应用表格：
+Application grid:
 
 ```bash
 npm install @ultigrid/insight react react-dom
@@ -41,17 +41,17 @@ import '@ultigrid/insight/style.css'
 interface Sale { id: number; region: string; revenue: number }
 
 const rows: Sale[] = [
-  { id: 1, region: '华东', revenue: 268_000 },
-  { id: 2, region: '华南', revenue: 146_000 },
+  { id: 1, region: 'East', revenue: 268_000 },
+  { id: 2, region: 'South', revenue: 146_000 },
 ]
 
 const columns: InsightColumnDefinition<Sale>[] = [
   defineInsightColumn<Sale, string>({
-    id: 'region', header: '区域', getValue: (row) => row.region,
+    id: 'region', header: 'Region', getValue: (row) => row.region,
   }),
   defineInsightColumn<Sale, number>({
     id: 'revenue',
-    header: '收入',
+    header: 'Revenue',
     getValue: (row) => row.revenue,
     conditionalRules: [
       { id: 'bar', kind: 'dataBar', domain: [0, 300_000], color: '#24935f' },
@@ -64,110 +64,110 @@ export function RevenueTable() {
 }
 ```
 
-只需要底层坐标协议和单元格 DOM 控制时，安装 `@ultigrid/core`。完整入口分别见 [Core README](packages/core/README.md) 与 [Insight README](packages/insight/README.md)。
+Install `@ultigrid/core` when you only need the coordinate protocol and direct control over cell DOM. See the [Core README](packages/core/README.md) and [Insight README](packages/insight/README.md) for their complete entry points.
 
-## 表格能力
+## Grid capabilities
 
-| 类别 | 能力 |
+| Area | Capabilities |
 | --- | --- |
-| 大规模渲染 | 行列双轴虚拟化、按坐标取值、可见范围实时渲染、可配置 overscan |
-| 布局 | 上下左右固定、默认/稀疏/函数式行列尺寸、可见内容渐进测量、容器平铺、双向滚动与鼠标/触控/键盘列宽调整 |
-| 合并 | Core 渲染二维矩形；Insight 通过 `mergeAdjacent` 合并配置列中纵向连续的相同维度值；横向或任意二维合并使用显式 `mergedCells` |
-| 单元格 | 文本截断、对齐、字体、颜色、图片、图标、背景、数据条、自定义 React 组件、统一主题色 |
-| 交互 | 点击与拖拽选择、越界自动滚动、Shift 扩展、方向键/Tab/Enter 导航；移动端原生滚动、轻点选中、拖拽手柄扩选与浮动复制 |
-| 数据模型 | 行数组、`LazyRowSource`、`FlatRowModel`、`TreeRowModel`、列数组与 `columnCount + getColumn` 惰性列 |
-| 条件格式 | 文本、背景、图标、二/三色阶、正负数据条、优先级与 `stopIfTrue` |
-| 输出与集成 | `scrollToCell`、选区/复制命令式 API，Excel、CSV、当前视口 PNG，数据坐标回调、`localeText`、ARIA grid/treegrid |
+| Large-scale rendering | Independent row and column virtualization, coordinate-based access, viewport rendering, configurable overscan |
+| Layout | Freeze on all four edges, default/sparse/getter sizes, visible-content measurement, container stretch, two-axis scrolling, and direct mouse/touch/keyboard column resize |
+| Merging | Core renders 2D rectangles; Insight uses `mergeAdjacent` for vertically consecutive equal values in configured columns; horizontal or arbitrary 2D merges use explicit `mergedCells` |
+| Cells | Text truncation, alignment, typography, color, images, icons, backgrounds, data bars, custom React components, shared theme color |
+| Interaction | Click/drag selection, edge auto-scroll, Shift and keyboard navigation; native touch scrolling, tap selection, drag-handle extension, and a floating mobile copy action |
+| Data models | Row arrays, `LazyRowSource`, `FlatRowModel`, `TreeRowModel`, materialized columns, and lazy `columnCount + getColumn` columns |
+| Conditional formatting | Text, background, icons, two/three-color scales, signed data bars, priority, `stopIfTrue` |
+| Output and integration | `scrollToCell`, imperative selection/copy APIs, Excel, CSV, current-viewport PNG, data-coordinate callbacks, `localeText`, ARIA grid/treegrid |
 
-详细状态与边界见 [能力清单](docs/CAPABILITIES.md)。
+See [Capability status](docs/CAPABILITIES.md) for detailed boundaries.
 
-移动端职责按层分离：Core 处理手势、viewport 坐标与 Axis，Insight 映射业务列和数据坐标，Studio 负责响应式壳层、焦点与安全区。Core 的 `columnResize` 需显式开启；Insight 有表头时默认开启，可传 `false` 关闭。
+Mobile responsibilities stay layered: Core owns gestures, viewport coordinates, and Axis; Insight maps business columns and data coordinates; Studio owns the responsive shell, focus, and safe areas. Core `columnResize` is opt-in. Insight enables it when a header is shown and accepts `false` to disable it.
 
-## 架构与技术实现
+## Architecture and implementation
 
-滚动热路径将视觉位移与 React 窗口更新分离：
+The scroll hot path separates visual movement from React window updates:
 
 ```text
-scroll → requestAnimationFrame → 精确可见区 → 直接同步 pane transform
-                                  └─ 越过 retained guard
-                                     → 补充渲染窗口 → MergeIndex 查询 → React cells
+scroll → requestAnimationFrame → exact visible window → direct pane transform
+                                  └─ exits retained guard
+                                     → replenish render window → MergeIndex query → React cells
 ```
 
-| 模块 | 实现 | 关键成本 |
+| Module | Implementation | Key cost |
 | --- | --- | --- |
-| `Axis` | 默认尺寸、稀疏 `Map`、`Float64Array` segment tree | offset 与 index 互查 `O(log N)` |
-| Virtualizer | 精确可见区 + 方向感知 retained 窗口 | 定位 `O(log Nᵣ + log N𝚌)`；guard 内不重组 React cells |
-| Frozen panes | 每轴 start/middle/end，最多 9 个裁剪 pane | DOM 由窗口与实际固定区决定 |
-| `MergeIndex` | 稳定 id `Map` + packed R-tree | 构建约 `O(M log M)`；常见查询 `O(log M + I)` |
-| Selection | 一个闭区间矩形与独立 anchor/focus | 常驻状态 `O(1)` |
-| Insight 同列纵向合并 | Props 变化时扫描展示行与配置维度 | 主体计算 `O(Nᵣ × D)` |
-| Insight formatter | Props 变化时编译规则，色阶预生成 palette | 可见格求值约 `O(W × R)` |
+| `Axis` | Default size, sparse `Map`, `Float64Array` segment tree | Offset/index lookup `O(log N)` |
+| Virtualizer | Exact visible window plus a direction-aware retained window | Lookup `O(log Nᵣ + log N𝚌)`; no React cell regrouping inside the guard |
+| Frozen panes | start/middle/end bands per axis, up to nine clipped panes | DOM follows the window and effective frozen regions |
+| `MergeIndex` | Stable-id `Map` plus packed R-tree | Build about `O(M log M)`; typical query `O(log M + I)` |
+| Selection | One inclusive rectangle with independent anchor/focus | Resident state `O(1)` |
+| Insight vertical adjacent merge | Scans displayed rows and configured dimensions when inputs change | Main pass `O(Nᵣ × D)` |
+| Insight formatter | Rules compile when props change; color palettes are precomputed | Visible-cell evaluation about `O(W × R)` |
 
-Core 不理解树形、条件格式或“值相同”。Insight 将业务行列投影为零基数据坐标，并把 `mergeAdjacent` 推导出的同列纵向相邻区域转换成 Core 接受的无重叠矩形；横向或任意二维区域由 `mergedCells` 显式提供。表头和行号只存在于内部 viewport 坐标，公开选择、滚动和导出 API 始终使用数据坐标。
+Core does not understand trees, conditional formatting, or value equality. Insight projects domain rows and columns into zero-based data coordinates, then converts vertical same-column regions derived by `mergeAdjacent` into the non-overlapping rectangles consumed by Core; horizontal or arbitrary 2D regions are supplied explicitly through `mergedCells`. Headers and row numbers exist only in internal viewport coordinates; public selection, scrolling, and export APIs consistently use data coordinates.
 
-完整数据流、DOM 合约与复杂度见 [架构文档](docs/ARCHITECTURE.md)。
+See [Architecture](docs/ARCHITECTURE.md) for the full data flow, DOM contract, and complexity model.
 
-## 性能与内存
+## Performance and memory
 
-| 状态 | 增长量 | 说明 |
+| State | Growth | Notes |
 | --- | --- | --- |
-| 逻辑数据 | 调用方决定 | Core 不保存 `Nᵣ × N𝚌` 单元格副本 |
-| Axis tree | `O(Nᵣ + N𝚌)` | 100K 行与 100K 列的原始 typed buffers 合计约 4 MiB |
-| 自定义尺寸 | `O(Kᵣ + K𝚌)` | 稀疏 `ReadonlyMap`，只记录覆盖项 |
-| 合并索引 | `O(M)` | 跨越大量格点的区域仍是一条矩形记录 |
-| DOM / React cell | `O(W)` | `W` 是 retained 窗口、固定 pane 与 merge fragment 的工作集 |
-| Insight 工作集缓存 | 有界 | 最多 2,048 列；行和行元数据各 512 项 |
-| 复制与导出 | `O(A)` | 必须物化目标范围，受安全上限约束 |
+| Logical data | Caller-defined | Core keeps no `Nᵣ × N𝚌` cell copy |
+| Axis trees | `O(Nᵣ + N𝚌)` | Raw typed buffers for 100K rows and 100K columns total about 4 MiB |
+| Custom sizes | `O(Kᵣ + K𝚌)` | Sparse `ReadonlyMap`; only overrides are stored |
+| Merge index | `O(M)` | A range spanning many cells remains one rectangle |
+| DOM / React cells | `O(W)` | `W` is the retained-window, frozen-pane, and merge-fragment workset |
+| Insight working-set caches | Bounded | Up to 2,048 columns; 512 rows and 512 row metadata entries |
+| Copy and export | `O(A)` | The target range must be materialized and is guarded by limits |
 
-`100,000 × 100,000` 表示逻辑寻址能力，不代表浏览器创建了 100 亿个值。当前实现使用单一原生滚动坐标，仍受浏览器最大布局尺寸、滚动精度和设备内存影响。固定区域、overscan、自动测量和深层自定义 DOM 都会增加主线程成本。
+`100,000 × 100,000` describes logical addressing, not ten billion allocated values. The current implementation uses one native scroll coordinate space and remains subject to browser layout limits, scroll precision, and available memory. Frozen regions, overscan, auto-size measurement, and deep custom DOM all add main-thread work.
 
-大规模场景建议保持 getter、尺寸 Map、合并配置和 renderer 的引用稳定；让 `getCell` / `getColumn` 接近 `O(1)`；对宽表使用惰性列；限制固定区、overscan、复制与导出范围。若稳定 getter 背后的可变 store 原地更新，必须同步递增 `contentVersion`，使 cell render 与自动测量缓存失效。
+At scale, keep getters, size maps, merge configuration, and renderers referentially stable; keep `getCell` / `getColumn` close to `O(1)`; use lazy columns for wide grids; and bound frozen regions, overscan, copy, and export ranges. When a mutable store behind a stable getter changes in place, increment `contentVersion` to invalidate cell-render and auto-measurement caches.
 
-## Studio 交互层
+## Studio interaction layer
 
-Studio 组合应用层表格与渲染底座的公开能力，本身不是生产运行时依赖。当前有 4 个顶层 Tab：
+Studio composes the public capabilities of the application grid and rendering foundation. It is not a production runtime dependency. It has four top-level tabs:
 
-Studio 默认使用日常档 `1K × 40`、行列 overscan `2 / 1`，并关闭自动行高；`100K × 100K` 是手动压力预设，不是固定 FPS 承诺。
+Studio defaults to the Everyday preset: `1K × 40`, row/column overscan `2 / 1`, and automatic row sizing off. `100K × 100K` is an opt-in stress preset, not a fixed-FPS promise.
 
-| Tab | 内容 |
+| Tab | Content |
 | --- | --- |
-| 介绍 | 独立呈现 Studio、应用层表格与表格渲染底座的职责、发布边界和能力摘要，不占用表格演示区域 |
-| 组件展厅 | 按基础/进阶分组提供 12 个可交互示例；每项直接编辑实现该 Demo 的 TSX 文件并实时刷新预览，覆盖惰性行列、多级树、移动端触控、命令式 API 与 Excel/CSV/PNG 导出 |
-| 经营分析 | BI 复合维度与指标；树形根节点和分支节点均可展开，至少展示深度 0/1/2；同列合并可独立开启并按兄弟边界断开 |
-| 条件格式 | 文本、背景、图标、色阶与数据条的组合规则 |
+| Overview | Presents Studio, the application grid, and the grid rendering foundation, plus their boundaries and capability summary, without occupying a grid demo |
+| Component gallery | Groups 12 interactive examples into Basic and Advanced; each edits the TSX file that implements the Demo and refreshes its preview live, covering lazy rows/columns, multi-level trees, mobile touch, imperative APIs, and Excel/CSV/PNG export |
+| Business analytics | Composite dimensions and metrics; roots and branches both expand across at least depths 0/1/2; same-column merging is independent and splits at sibling boundaries |
+| Conditional formatting | Combined text, background, icon, color-scale, and data-bar rules |
 
-组件展厅的编辑器通过 `?raw` 读取与默认预览相同的 `.tsx` 文件，编辑后以 220ms 防抖重新编译。运行时仅解析 `react`、`lucide-react`、`@ultigrid/core` 和 `@ultigrid/insight`，草稿只保存在当前页面内。
+The gallery editor reads the same `.tsx` file as the default preview through `?raw`, then recompiles edits with a 220ms debounce. Its runtime resolves only `react`, `lucide-react`, `@ultigrid/core`, and `@ultigrid/insight`; drafts remain in the current page.
 
-窄屏下 Studio 保留完整表格舞台；顶部导航横向滚动并压缩，参数面板进入带遮罩、拖拽把手与安全区适配的底部 sheet。组件展厅将移动端触控列为进阶能力并提供真实源码。
+On narrow screens, Studio keeps the grid stage primary, compresses the top navigation into a horizontal scroller, and moves Props into a safe-area-aware bottom sheet with a backdrop and drag handle. Mobile touch interaction is an Advanced gallery capability backed by real editable source.
 
-该编辑器用于本地 Demo 调试，不是安全沙箱：不要自动加载或执行来自 URL、远端存储或第三方分享的不可信源码。
+This editor is a local Demo tool, not a security sandbox. Do not automatically load or execute untrusted source from URLs, remote storage, or third-party shares.
 
-组件展厅用于逐项验证公开 npm 入口；右侧工作台提供可视化 Props、JSON、规模预设与性能观测；中文和英文可即时切换。
+The component gallery verifies the public npm entry points one capability at a time. The right-hand workbench provides visual Props, JSON, scale presets, and performance observations; Chinese and English can be switched immediately.
 
-## 仓库结构
+## Repository layout
 
 ```text
 packages/
-├── core/          # @ultigrid/core 发布入口
-└── insight/       # @ultigrid/insight 发布入口
+├── core/          # @ultigrid/core publication entry
+└── insight/       # @ultigrid/insight publication entry
 src/
-├── core/          # 表格渲染底座
-├── bi/            # 应用层表格
-├── studio/        # Studio shell 与 Props 编辑器
-├── demo/          # 场景、组件展厅、真实 Demo 源码与实时编辑运行时
-└── i18n/          # Studio 中英文文案
-tests/             # 算法、坐标、数据模型和公共契约测试
-docs/              # 架构与能力边界
+├── core/          # grid rendering foundation
+├── bi/            # application grid
+├── studio/        # Studio shell and Props editor
+├── demo/          # scenarios, component gallery, real Demo sources, and live-edit runtime
+└── i18n/          # Studio Chinese/English copy
+tests/             # algorithms, coordinates, data models, and public contracts
+docs/              # architecture and capability boundaries
 ```
 
-## 文档
+## Documentation
 
-- [架构、热路径与内存模型](docs/ARCHITECTURE.md)
-- [能力状态与边界](docs/CAPABILITIES.md)
-- [`@ultigrid/core` 使用说明](packages/core/README.md)
-- [`@ultigrid/insight` 使用说明](packages/insight/README.md)
+- [Architecture, hot path, and memory model](docs/ARCHITECTURE.md)
+- [Capability status and boundaries](docs/CAPABILITIES.md)
+- [`@ultigrid/core` guide](packages/core/README.md)
+- [`@ultigrid/insight` guide](packages/insight/README.md)
 
-## 本地开发
+## Local development
 
 ```bash
 npm ci
@@ -178,30 +178,30 @@ npm run verify:packages
 npm run pack:packages
 ```
 
-根目录是 private npm workspace；两个 `packages/*` 子包是公开发布边界。
+The root is a private npm workspace; the two `packages/*` directories are the public publication boundaries.
 
-## npm 发布
+## npm publishing
 
-`.github/workflows/publish.yml` 会在 `main` 提交或手动 `workflow_dispatch` 时执行 build、test 和 package tarball 检查（本地同口径命令为 `npm run pack:packages`）。工作流查询 npm 上的现有版本，仅当对应 `package.json` 版本不存在时，按 `@ultigrid/core` → `@ultigrid/insight` 发布；未提升版本的普通提交会安全跳过发布。
+`.github/workflows/publish.yml` runs build, test, and package-tarball checks on every `main` commit or manual `workflow_dispatch` (use `npm run pack:packages` for the matching local check). It queries existing npm versions and publishes only a `package.json` version that is not yet present, in `@ultigrid/core` → `@ultigrid/insight` order. Ordinary commits without a version bump skip publishing safely.
 
-首次发布：
+First publication:
 
-1. 创建或拥有 npm 的 `@ultigrid` scope。
-2. 创建 granular access token，将 **Packages and scopes** 设为 **Read and write** 并启用 **Bypass 2FA**，保存为 GitHub Actions Secret `NPM_TOKEN`。
-3. 通过 `workflow_dispatch` 手动运行发布工作流。
+1. Create or own the `@ultigrid` npm scope.
+2. Create a granular access token with **Packages and scopes: Read and write** and **Bypass 2FA** enabled, then store it as the GitHub Actions Secret `NPM_TOKEN`.
+3. Run the publishing workflow through `workflow_dispatch`.
 
-首次发布后，推荐分别为两个 npm 包配置 Trusted Publisher：owner `Whiskeyi`、repository `UltimateRenderTable`、workflow `publish.yml`。随后设置仓库 Actions variable `NPM_USE_OIDC=true`，验证 OIDC 发布成功后移除 `NPM_TOKEN`。
+After the first release, configure npm Trusted Publisher for both packages with owner `Whiskeyi`, repository `UltimateRenderTable`, and workflow `publish.yml`. Then set the repository Actions variable `NPM_USE_OIDC=true`; after an OIDC release succeeds, remove `NPM_TOKEN`.
 
-## 路线图
+## Roadmap
 
-- 建立可复现的浏览器 benchmark 与性能回归预算。
-- 增加分段滚动/坐标重基，降低超大 CSS 画布限制。
-- 将超大导出迁移到 Worker 或服务端流式管线。
-- 以应用插件补充排序、筛选、分组、聚合、透视和编辑事务。
+- Establish reproducible browser benchmarks and performance budgets.
+- Add segmented scrolling / coordinate rebasing to reduce extreme CSS-canvas limits.
+- Move very large exports to a Worker or server-side streaming pipeline.
+- Add sorting, filtering, grouping, aggregation, pivoting, and editing as application plugins.
 
-## 贡献
+## Contributing
 
-欢迎 Issue、设计讨论和 Pull Request。性能相关变更请附浏览器、硬件、viewport、数据规模、固定区、overscan、自定义 DOM，以及修改前后的同口径结果。
+Issues, design discussions, and pull requests are welcome. Performance changes should include the browser, hardware, viewport, data scale, frozen regions, overscan, custom DOM, and comparable before/after results.
 
 ## License
 
