@@ -28,51 +28,52 @@ describe('gallery mobile layout contract', () => {
     expect(STUDIO_COMPACT_LAYOUT_QUERY).toContain('(any-pointer: coarse)')
   })
 
-  it('presents a full-width guide above a large phone and compact live state', () => {
+  it('renders an exact 375 by 750 mobile viewport beside compact live state', () => {
     for (const className of [
       'component-gallery__mobile-demo',
-      'component-gallery__mobile-overview',
       'component-gallery__mobile-body',
       'component-gallery__mobile-details',
       'component-gallery__mobile-canvas',
       'component-gallery__mobile-device',
       'component-gallery__mobile-screen',
     ]) expect(mobileExampleSource).toContain(className)
-    expect(mobileExampleSource).toContain('<ol className="component-gallery__mobile-steps">')
     expect(mobileExampleSource).toContain('<dl className="component-gallery__mobile-state">')
     expect(mobileExampleSource).toContain('const DEVICE_WIDTH = 375')
     expect(mobileExampleSource).toContain('const DEVICE_HEIGHT = 750')
-    expect(mobileExampleSource).toContain('data-viewport-width={DEVICE_WIDTH}')
-    expect(mobileExampleSource).toContain('data-viewport-height={DEVICE_HEIGHT}')
-    expect(mobileExampleSource).not.toContain('component-gallery__example-toolbar')
-    expect(mobileExampleSource).not.toContain("width: 'min(100%, 430px)'")
-    expect(mobileExampleSource).not.toContain('component-gallery__mobile-device-meta')
-    expect(demoCss).not.toContain('.component-gallery__mobile-device-meta')
+    expect(mobileExampleSource).toMatch(
+      /className="component-gallery__mobile-screen"\s+data-viewport-width=\{DEVICE_WIDTH\}\s+data-viewport-height=\{DEVICE_HEIGHT\}/s,
+    )
     expect(demoCss).toMatch(
-      /\.component-gallery__mobile-layout\s*\{[^}]*grid-template-rows:\s*auto minmax\(0, 1fr\)/s,
+      /\.component-gallery__mobile-layout\s*\{[^}]*grid-template-rows:\s*minmax\(0, 1fr\)/s,
     )
     expect(demoCss).toMatch(
       /\.component-gallery__mobile-body\s*\{[^}]*grid-template-areas:\s*'device details'[^}]*grid-template-columns:\s*minmax\(0, 1fr\) minmax\(170px, 200px\)/s,
     )
     expect(demoCss).toMatch(
-      /\.component-gallery__mobile-device\s*\{[^}]*width:\s*min\(270px, 50cqh, 100cqw\)[^}]*height:\s*min\(540px, 100cqh, 200cqw\)[^}]*aspect-ratio:\s*375 \/ 750[^}]*border-radius:\s*46px/s,
+      /\.component-gallery__mobile-device\s*\{[^}]*box-sizing:\s*border-box[^}]*width:\s*393px[^}]*min-width:\s*393px[^}]*height:\s*768px[^}]*min-height:\s*768px[^}]*border-radius:\s*46px/s,
     )
-    expect(demoCss).toContain('container: mobile-device-canvas / size')
     expect(demoCss).toMatch(
-      /\.component-gallery__mobile-screen\s*\{[^}]*overflow:\s*hidden/s,
+      /\.component-gallery__mobile-canvas\s*\{[^}]*overflow:\s*auto/s,
+    )
+    expect(demoCss).toMatch(
+      /\.component-gallery__mobile-screen\s*\{[^}]*box-sizing:\s*border-box[^}]*width:\s*375px[^}]*height:\s*750px[^}]*aspect-ratio:\s*375 \/ 750[^}]*overflow:\s*hidden/s,
     )
   })
 
-  it('keeps the 375 by 750 portrait device in narrow and short viewports', () => {
+  it('scrolls instead of shrinking the fixed device in narrow viewports', () => {
     expect(demoCss).toMatch(
-      /@container gallery-example \(max-width: 640px\)[\s\S]*?\.component-gallery__mobile-body\s*\{[^}]*grid-template-areas:\s*'device details'[^}]*grid-template-columns:\s*minmax\(0, 1fr\) minmax\(110px, 130px\)/s,
+      /@container gallery-example \(max-width: 640px\)[\s\S]*?\.component-gallery__mobile-body\s*\{[^}]*grid-template-areas:\s*\n\s*'device'\s*\n\s*'details'[^}]*grid-template-columns:\s*minmax\(0, 1fr\)/s,
+    )
+    expect(demoCss.match(/\.component-gallery__mobile-device\s*\{/g)).toHaveLength(1)
+  })
+
+  it('floats the source entry without consuming phone height', () => {
+    expect(gallerySource).toContain('data-editor-open={editorOpen}')
+    expect(demoCss).toMatch(
+      /\.component-gallery__stage\[data-example='mobile'\] \.component-gallery__stage-head\s*\{[^}]*position:\s*absolute/s,
     )
     expect(demoCss).toMatch(
-      /@media \(max-width: 1024px\) and \(max-height: 600px\) and \(orientation: landscape\)[\s\S]*?\.component-gallery__mobile-body\s*\{[^}]*grid-template-areas:\s*'device details'/s,
-    )
-    expect(demoCss).not.toContain('aspect-ratio: 750 / 375')
-    expect(demoCss).not.toMatch(
-      /\.component-gallery__mobile-(?:body|canvas)\s*\{[^}]*min-height:\s*(?:540|560)px/s,
+      /\.component-gallery__stage\[data-example='mobile'\]\[data-editor-open='true'\][\s\S]*?\.component-gallery__stage-head\s*\{[^}]*display:\s*none/s,
     )
   })
 

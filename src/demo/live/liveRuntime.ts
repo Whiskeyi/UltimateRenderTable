@@ -3,9 +3,7 @@ import * as InsightModule from '@ultigrid/insight'
 import {
   BatteryMedium,
   ClipboardCopy,
-  Columns3,
   FileText,
-  Hand,
   Image,
   MousePointer2,
   Signal,
@@ -24,9 +22,7 @@ const LIVE_MODULES: Readonly<Record<string, Record<string, unknown>>> = {
   'lucide-react': {
     BatteryMedium,
     ClipboardCopy,
-    Columns3,
     FileText,
-    Hand,
     Image,
     MousePointer2,
     Signal,

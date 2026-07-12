@@ -113,6 +113,7 @@ export function ComponentGallery() {
         id="component-gallery-panel"
         className="component-gallery__stage"
         data-example={active.id}
+        data-editor-open={editorOpen}
         role="tabpanel"
         aria-labelledby={`component-gallery-tab-${active.id}`}
       >

@@ -1,8 +1,5 @@
 import {
   BatteryMedium,
-  Columns3,
-  Hand,
-  MousePointer2,
   Signal,
   Wifi,
 } from 'lucide-react'
@@ -108,33 +105,6 @@ export default function MobileInteractionExample({ t }: GalleryExampleProps) {
   return (
     <div className="component-gallery__example-stack component-gallery__mobile-demo">
       <div className="component-gallery__mobile-layout">
-        <div className="component-gallery__mobile-overview">
-          <header className="component-gallery__mobile-guide-head">
-            <h4>{t('gallery.mobile.workbench.title')}</h4>
-          </header>
-
-          <ol className="component-gallery__mobile-steps">
-            <li>
-              <i aria-hidden="true"><Hand size={16} /></i>
-              <span>
-                <strong>{t('gallery.mobile.step.scroll.title')}</strong>
-              </span>
-            </li>
-            <li>
-              <i aria-hidden="true"><MousePointer2 size={16} /></i>
-              <span>
-                <strong>{t('gallery.mobile.step.select.title')}</strong>
-              </span>
-            </li>
-            <li>
-              <i aria-hidden="true"><Columns3 size={16} /></i>
-              <span>
-                <strong>{t('gallery.mobile.step.resize.title')}</strong>
-              </span>
-            </li>
-          </ol>
-        </div>
-
         <div className="component-gallery__mobile-body">
           <section
             className="component-gallery__mobile-canvas"
@@ -142,11 +112,13 @@ export default function MobileInteractionExample({ t }: GalleryExampleProps) {
           >
             <div
               className="component-gallery__mobile-device"
-              data-viewport-width={DEVICE_WIDTH}
-              data-viewport-height={DEVICE_HEIGHT}
             >
               <span className="component-gallery__mobile-device-island" aria-hidden="true" />
-              <div className="component-gallery__mobile-screen">
+              <div
+                className="component-gallery__mobile-screen"
+                data-viewport-width={DEVICE_WIDTH}
+                data-viewport-height={DEVICE_HEIGHT}
+              >
                 <div className="component-gallery__mobile-statusbar" aria-hidden="true">
                   <span>9:41</span>
                   <span><Signal size={10} /><Wifi size={10} /><BatteryMedium size={12} /></span>
