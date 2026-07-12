@@ -64,4 +64,13 @@ export default function LiveExample() {
 
     expect(renderToStaticMarkup(createElement(Rendered))).toContain('aria-label="EDITED LIVE GRID"')
   })
+
+  it('renders the mobile device Demo with every playground icon resolved', async () => {
+    const source = GALLERY_EXAMPLES.find(({ id }) => id === 'mobile')!.source
+    const Rendered = await compileSource(source)
+    const markup = renderToStaticMarkup(createElement(Rendered))
+
+    expect(markup).toContain('component-gallery__mobile-device')
+    expect(markup).toContain('375 × 750')
+  })
 })

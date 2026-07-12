@@ -112,6 +112,7 @@ export function ComponentGallery() {
       <article
         id="component-gallery-panel"
         className="component-gallery__stage"
+        data-example={active.id}
         role="tabpanel"
         aria-labelledby={`component-gallery-tab-${active.id}`}
       >

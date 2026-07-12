@@ -1,12 +1,17 @@
 import * as CoreModule from '@ultigrid/core'
 import * as InsightModule from '@ultigrid/insight'
 import {
+  BatteryMedium,
   ClipboardCopy,
+  Columns3,
   FileText,
+  Hand,
   Image,
   MousePointer2,
+  Signal,
   Table2,
   Target,
+  Wifi,
 } from 'lucide-react'
 import * as ReactModule from 'react'
 import * as ReactJsxRuntimeModule from 'react/jsx-runtime'
@@ -17,12 +22,17 @@ const LIVE_MODULES: Readonly<Record<string, Record<string, unknown>>> = {
   react: ReactModule,
   'react/jsx-runtime': ReactJsxRuntimeModule,
   'lucide-react': {
+    BatteryMedium,
     ClipboardCopy,
+    Columns3,
     FileText,
+    Hand,
     Image,
     MousePointer2,
+    Signal,
     Table2,
     Target,
+    Wifi,
   },
   '@ultigrid/core': CoreModule,
   '@ultigrid/insight': InsightModule,
