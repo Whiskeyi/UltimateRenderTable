@@ -61,7 +61,7 @@ Coordinates are zero-based and range ends are inclusive. Keep getters, size maps
 | Layout | defaults, sparse size maps/getters, `frozen`, `overscan`, `fitColumns`, `autoSize`, direct column resize |
 | Rendering | `renderCell`, styles, classes, metadata, ARIA hooks, `contentVersion` cache invalidation |
 | Merging | explicit, non-overlapping `MergedCellRange` rectangles, including horizontal and arbitrary 2D ranges |
-| Interaction | bounded controlled/uncontrolled selection, keyboard navigation, TSV copy, native touch scrolling, tap-safe selection, drag handle, safe-area copy action |
+| Interaction | bounded controlled/uncontrolled selection, keyboard navigation, TSV copy, direction-locked touch scrolling, tap-safe selection, drag handle, safe-area copy action |
 | Theme | `themeColor` controls selection and focus accents; CSS variables remain available for deeper styling |
 | Imperative API | scroll, selection, effective width reads, and copy through `UltiGridViewportApi` / `ApiRef` |
 | Observation | `onViewportChange`, `ViewportSnapshot` |
@@ -73,7 +73,7 @@ Only these package paths are supported:
 
 Axis, virtualizer, MergeIndex, and selection helpers are internal implementations.
 
-`mobileInteraction` defaults to automatic coarse-pointer and live touch-input detection, so hybrid laptops do not show touch chrome until it is useful. Native one-finger two-axis scrolling remains browser-driven; a cell is selected only after a tap completes without a pan or scroll. The active cell exposes a 44 px drag target for range extension and edge auto-scroll, while a 44 px safe-area-aware action copies the range. Use `labels` to localize every visible or announced string, or set `showCopyAction: false` when the host supplies its own toolbar.
+`mobileInteraction` defaults to automatic coarse-pointer and live touch-input detection, so hybrid laptops do not show touch chrome until it is useful. One-finger scrolling uses a dominant-axis lock: vertical movement keeps native browser scrolling and momentum, while a clearly horizontal gesture updates only `scrollLeft` and continues with single-axis momentum. Set `scrollAxisLock: 'native'` to restore browser-managed two-axis panning. A cell is selected only after a tap completes without a pan or scroll. The active cell exposes a 44 px drag target for range extension and edge auto-scroll, while a 44 px safe-area-aware action copies the range. Use `labels` to localize every visible or announced string, or set `showCopyAction: false` when the host supplies its own toolbar.
 
 Core owns raw pointer gestures, zero-based viewport coordinates, and Axis updates. It does not infer business columns or host chrome.
 

@@ -39,6 +39,7 @@ export default function MobileInteractionExample({ t }: GalleryExampleProps) {
   ], [t])
   const mobileInteraction = useMemo<MobileInteractionOptions>(() => ({
     mode: 'always',
+    scrollAxisLock: 'dominant',
     tapSlop: 12,
     edgeAutoScrollThreshold: 44,
     labels: {
@@ -120,8 +121,8 @@ export default function MobileInteractionExample({ t }: GalleryExampleProps) {
               <span className="component-gallery__mobile-device-island" aria-hidden="true" />
               <div
                 className="component-gallery__mobile-screen"
-                data-viewport-width={DEVICE_WIDTH}
-                data-viewport-height={DEVICE_HEIGHT}
+                data-reference-viewport-width={DEVICE_WIDTH}
+                data-reference-viewport-height={DEVICE_HEIGHT}
               >
                 <div className="component-gallery__mobile-statusbar" aria-hidden="true">
                   <span className="component-gallery__mobile-status-time">9:41</span>
@@ -176,7 +177,7 @@ export default function MobileInteractionExample({ t }: GalleryExampleProps) {
               <h5 id="component-gallery-mobile-state-title">{t('gallery.mobile.state.title')}</h5>
             </div>
             <div className="component-gallery__mobile-viewport-size">
-              <small>{t('gallery.mobile.deviceLabel')}</small>
+              <small>{t('gallery.mobile.referenceSize')}</small>
               <strong>{DEVICE_SIZE_LABEL}</strong>
             </div>
             <dl className="component-gallery__mobile-state">

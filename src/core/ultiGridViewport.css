@@ -31,6 +31,15 @@
   touch-action: pan-x pan-y pinch-zoom;
 }
 
+.ultigrid-root--axis-lock > .ultigrid-scroller {
+  overscroll-behavior-x: contain;
+  touch-action: pan-y pinch-zoom;
+}
+
+.ultigrid-root--mobile.ultigrid-root--axis-lock > .ultigrid-scroller {
+  overscroll-behavior-y: auto;
+}
+
 .ultigrid-scroller::-webkit-scrollbar {
   width: 11px;
   height: 11px;

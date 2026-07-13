@@ -10,6 +10,7 @@ import {
   detectTouchFirstInput,
   isCompletedTouchTap,
   resolveMobileInteractionOptions,
+  resolveTouchScrollIntent,
   TOUCH_CAPABLE_POINTER_QUERY,
   updateTouchTapGesture,
 } from '../src/core/mobileInteraction'
@@ -20,12 +21,14 @@ describe('Core mobile interaction', () => {
   it('normalizes automatic, forced, bounded, and localized options', () => {
     expect(resolveMobileInteractionOptions(undefined)).toMatchObject({
       mode: 'auto',
+      scrollAxisLock: 'dominant',
       tapSlop: 10,
       edgeAutoScrollThreshold: 36,
       showCopyAction: true,
     })
     expect(resolveMobileInteractionOptions(false).mode).toBe('off')
     expect(resolveMobileInteractionOptions(true).mode).toBe('always')
+    expect(resolveMobileInteractionOptions({ scrollAxisLock: 'native' }).scrollAxisLock).toBe('native')
     expect(resolveMobileInteractionOptions({
       tapSlop: 200,
       edgeAutoScrollThreshold: -10,
@@ -35,6 +38,13 @@ describe('Core mobile interaction', () => {
       edgeAutoScrollThreshold: 0,
       labels: { copySelection: '复制', copySuccess: 'Copied' },
     })
+  })
+
+  it('locks a one-finger pan to one dominant axis after the touch slop', () => {
+    expect(resolveTouchScrollIntent(100, 100, 106, 104, 10)).toBeNull()
+    expect(resolveTouchScrollIntent(100, 100, 124, 108, 10)).toBe('horizontal')
+    expect(resolveTouchScrollIntent(100, 100, 108, 124, 10)).toBe('vertical')
+    expect(resolveTouchScrollIntent(100, 100, 120, 118, 10)).toBe('vertical')
   })
 
   it('keeps a small touch movement as a tap and rejects a pan', () => {
@@ -59,6 +69,11 @@ describe('Core mobile interaction', () => {
       expect(detectTouchFirstInput()).toBe(true)
       expect(matchMedia).toHaveBeenCalledWith(TOUCH_CAPABLE_POINTER_QUERY)
       expect(coreCss).toContain('.ultigrid-root--mobile .ultigrid-column-resize-handle')
+      expect(coreCss).toContain('.ultigrid-root--axis-lock > .ultigrid-scroller')
+      expect(coreCss).toContain('touch-action: pan-y pinch-zoom')
+      expect(coreCss).toMatch(
+        /\.ultigrid-root--mobile\.ultigrid-root--axis-lock > \.ultigrid-scroller\s*\{[^}]*overscroll-behavior-y:\s*auto/s,
+      )
       expect(coreCss).toContain('@media (hover: none), (pointer: coarse), (any-pointer: coarse)')
     } finally {
       vi.unstubAllGlobals()
@@ -91,6 +106,7 @@ describe('Core mobile interaction', () => {
     )
 
     expect(markup).toContain('data-mobile-interaction="true"')
+    expect(markup).toContain('data-scroll-axis-lock="dominant"')
     expect(markup).toContain('role="toolbar"')
     expect(markup).toContain('aria-label="选区操作"')
     expect(markup).toContain('<span>复制选区</span>')

@@ -34,9 +34,11 @@ import {
   detectTouchFirstInput,
   isCompletedTouchTap,
   resolveMobileInteractionOptions,
+  resolveTouchScrollIntent,
   TOUCH_CAPABLE_POINTER_QUERY,
   updateTouchTapGesture,
   type ResolvedMobileInteractionOptions,
+  type TouchScrollIntent,
   type TouchTapGesture,
 } from './mobileInteraction.js'
 import { rangeToTSV } from './selection.js'
@@ -115,6 +117,25 @@ interface PendingColumnResize {
   input: Exclude<ColumnResizeInput, 'keyboard'>
   captureTarget: HTMLDivElement
   timer: number | null
+}
+
+interface HorizontalTouchScrollSession {
+  pointerId: number
+  startX: number
+  startY: number
+  lastX: number
+  lastScrollLeft: number
+  lastTime: number
+  velocity: number
+  locked: boolean
+  captureTarget: HTMLDivElement | null
+}
+
+interface TouchDragScrollAxisSession {
+  pointerId: number
+  startX: number
+  startY: number
+  axis: TouchScrollIntent | null
 }
 
 type BandKind = 'start' | 'middle' | 'end'
@@ -393,7 +414,10 @@ export function UltiGridViewport<TValue = CellPrimitive, TMeta = unknown>(
   const dragPointerRef = useRef<{ x: number; y: number } | null>(null)
   const dragPointerIdRef = useRef<number | null>(null)
   const dragPointerTypeRef = useRef<string | null>(null)
+  const touchDragScrollAxisRef = useRef<TouchDragScrollAxisSession | null>(null)
   const touchTapRef = useRef<TouchTapTarget<TValue, TMeta> | null>(null)
+  const horizontalTouchScrollRef = useRef<HorizontalTouchScrollSession | null>(null)
+  const horizontalScrollInertiaRafRef = useRef<number | null>(null)
   const columnResizeSessionRef = useRef<ColumnResizeSession | null>(null)
   const pendingColumnResizeRef = useRef<PendingColumnResize | null>(null)
   const lastScrollRef = useRef({ top: 0, left: 0 })
@@ -437,6 +461,8 @@ export function UltiGridViewport<TValue = CellPrimitive, TMeta = unknown>(
     [mobileInteraction],
   )
   const mobileEnabled = useMobileInteractionEnabled(mobileOptions, lastInputWasTouch)
+  const dominantTouchScrollEnabled = mobileOptions.mode !== 'off'
+    && mobileOptions.scrollAxisLock === 'dominant'
   const columnResizeOptions = useMemo(
     () => resolveColumnResizeOptions(columnResize),
     [columnResize],
@@ -723,21 +749,192 @@ export function UltiGridViewport<TValue = CellPrimitive, TMeta = unknown>(
     syncPaneTransforms,
   ])
 
-  const handleScroll = useCallback(() => {
+  const cancelPendingColumnResize = useCallback(() => {
     const pendingResize = pendingColumnResizeRef.current
-    if (pendingResize) {
-      if (pendingResize.timer !== null) window.clearTimeout(pendingResize.timer)
-      pendingColumnResizeRef.current = null
-    }
-    // A real native scroll is authoritative: even sub-slop movement must never
-    // turn into a selection when the finger lifts.
+    if (!pendingResize) return
+    if (pendingResize.timer !== null) window.clearTimeout(pendingResize.timer)
+    pendingColumnResizeRef.current = null
+  }, [])
+
+  const handleScroll = useCallback(() => {
+    cancelPendingColumnResize()
+    // Any scroll is authoritative: even sub-slop movement must never turn into
+    // a selection when the finger lifts.
     touchTapRef.current = null
     if (scrollRafRef.current !== null) return
     scrollRafRef.current = requestAnimationFrame(() => {
       scrollRafRef.current = null
       syncScroll()
     })
-  }, [syncScroll])
+  }, [cancelPendingColumnResize, syncScroll])
+
+  const stopHorizontalScrollInertia = useCallback(() => {
+    if (horizontalScrollInertiaRafRef.current !== null) {
+      cancelAnimationFrame(horizontalScrollInertiaRafRef.current)
+      horizontalScrollInertiaRafRef.current = null
+    }
+    scrollerRef.current?.removeAttribute('data-scroll-axis')
+  }, [])
+
+  const cancelHorizontalTouchScroll = useCallback(() => {
+    const session = horizontalTouchScrollRef.current
+    horizontalTouchScrollRef.current = null
+    if (session?.captureTarget) {
+      try {
+        if (session.captureTarget.hasPointerCapture?.(session.pointerId)) {
+          session.captureTarget.releasePointerCapture?.(session.pointerId)
+        }
+      } catch {
+        // A detached scroller may reject capture cleanup.
+      }
+    }
+    if (horizontalScrollInertiaRafRef.current === null) {
+      scrollerRef.current?.removeAttribute('data-scroll-axis')
+    }
+  }, [])
+
+  const cancelHorizontalTouchMotion = useCallback(() => {
+    cancelHorizontalTouchScroll()
+    stopHorizontalScrollInertia()
+  }, [cancelHorizontalTouchScroll, stopHorizontalScrollInertia])
+
+  const startHorizontalScrollInertia = useCallback((initialVelocity: number) => {
+    stopHorizontalScrollInertia()
+    const scroller = scrollerRef.current
+    const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
+    if (!scroller || reduceMotion || Math.abs(initialVelocity) < 0.02) return
+
+    let velocity = clamp(initialVelocity, -3.5, 3.5)
+    let previousTime = performance.now()
+    scroller.dataset.scrollAxis = 'horizontal'
+    const step = (now: number) => {
+      const elapsed = Math.min(32, Math.max(1, now - previousTime))
+      previousTime = now
+      const previousLeft = scroller.scrollLeft
+      scroller.scrollLeft += velocity * elapsed
+      if (scroller.scrollLeft === previousLeft) {
+        horizontalScrollInertiaRafRef.current = null
+        scroller.removeAttribute('data-scroll-axis')
+        return
+      }
+      velocity *= Math.pow(0.94, elapsed / (1000 / 60))
+      if (Math.abs(velocity) < 0.02) {
+        horizontalScrollInertiaRafRef.current = null
+        scroller.removeAttribute('data-scroll-axis')
+        return
+      }
+      horizontalScrollInertiaRafRef.current = requestAnimationFrame(step)
+    }
+    horizontalScrollInertiaRafRef.current = requestAnimationFrame(step)
+  }, [stopHorizontalScrollInertia])
+
+  const beginHorizontalTouchScroll = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    const target = event.target
+    if (
+      target instanceof Element
+      && target.closest('.ultigrid-scroller') !== event.currentTarget
+    ) return
+    if (event.pointerType !== 'touch') {
+      if (event.isPrimary && event.button === 0) {
+        cancelHorizontalTouchMotion()
+      }
+      return
+    }
+    if (!event.isPrimary) {
+      cancelHorizontalTouchMotion()
+      return
+    }
+    if (!dominantTouchScrollEnabled || event.button !== 0) return
+    cancelHorizontalTouchMotion()
+    if (target instanceof Element && target.closest('.ultigrid-selection-handle')) return
+    const scroller = scrollerRef.current
+    if (!scroller || columnResizeSessionRef.current || dragRef.current) return
+    horizontalTouchScrollRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      lastX: event.clientX,
+      lastScrollLeft: scroller.scrollLeft,
+      lastTime: event.timeStamp,
+      velocity: 0,
+      locked: false,
+      captureTarget: null,
+    }
+  }, [
+    cancelHorizontalTouchMotion,
+    dominantTouchScrollEnabled,
+  ])
+
+  const updateHorizontalTouchScroll = useCallback((event: PointerEvent) => {
+    const session = horizontalTouchScrollRef.current
+    const scroller = scrollerRef.current
+    if (!session || !scroller || session.pointerId !== event.pointerId) return
+    if (!event.isPrimary || event.pointerType !== 'touch') {
+      cancelHorizontalTouchScroll()
+      return
+    }
+
+    if (!session.locked) {
+      const intent = resolveTouchScrollIntent(
+        session.startX,
+        session.startY,
+        event.clientX,
+        event.clientY,
+        mobileOptions.tapSlop,
+      )
+      if (intent === null) return
+      cancelPendingColumnResize()
+      if (intent === 'vertical') {
+        cancelHorizontalTouchScroll()
+        return
+      }
+      session.locked = true
+      session.captureTarget = scroller
+      scroller.dataset.scrollAxis = 'horizontal'
+      try {
+        scroller.setPointerCapture?.(event.pointerId)
+      } catch {
+        // Window listeners keep the gesture alive where capture is unavailable.
+      }
+    }
+
+    if (event.cancelable) event.preventDefault()
+    scroller.scrollLeft -= event.clientX - session.lastX
+    session.lastX = event.clientX
+    const elapsed = Math.max(1, event.timeStamp - session.lastTime)
+    const instantVelocity = (scroller.scrollLeft - session.lastScrollLeft) / elapsed
+    const reversedDirection = instantVelocity !== 0
+      && session.velocity !== 0
+      && Math.sign(instantVelocity) !== Math.sign(session.velocity)
+    session.velocity = session.velocity === 0 || reversedDirection
+      ? instantVelocity
+      : session.velocity * 0.65 + instantVelocity * 0.35
+    session.lastScrollLeft = scroller.scrollLeft
+    session.lastTime = event.timeStamp
+  }, [cancelHorizontalTouchScroll, cancelPendingColumnResize, mobileOptions.tapSlop])
+
+  const finishHorizontalTouchScroll = useCallback((
+    pointerId: number,
+    timeStamp: number,
+    momentum: boolean,
+  ) => {
+    const session = horizontalTouchScrollRef.current
+    if (!session || session.pointerId !== pointerId) return
+    const recentlyMoved = timeStamp - session.lastTime < 80
+    const velocity = session.locked && recentlyMoved ? session.velocity : 0
+    cancelHorizontalTouchScroll()
+    if (momentum && velocity !== 0) startHorizontalScrollInertia(velocity)
+  }, [cancelHorizontalTouchScroll, startHorizontalScrollInertia])
+
+  useEffect(() => {
+    if (dominantTouchScrollEnabled) return
+    cancelHorizontalTouchScroll()
+    stopHorizontalScrollInertia()
+  }, [
+    cancelHorizontalTouchScroll,
+    dominantTouchScrollEnabled,
+    stopHorizontalScrollInertia,
+  ])
 
   useLayoutEffect(() => {
     const root = rootRef.current
@@ -809,6 +1006,7 @@ export function UltiGridViewport<TValue = CellPrimitive, TMeta = unknown>(
   const scrollToCell = useCallback((address: CellAddress, align: 'auto' | 'start' | 'center' | 'end' = 'auto') => {
     const scroller = scrollerRef.current
     if (!scroller || rowCount === 0 || columnCount === 0) return
+    cancelHorizontalTouchMotion()
     const row = clamp(address.row, 0, rowCount - 1)
     const column = clamp(address.column, 0, columnCount - 1)
     let nextTop = scroller.scrollTop
@@ -844,6 +1042,7 @@ export function UltiGridViewport<TValue = CellPrimitive, TMeta = unknown>(
     columnAxis,
     dimensions,
     size,
+    cancelHorizontalTouchMotion,
   ])
 
   const cellText = useCallback((cell: TableCell<TValue, TMeta>, row: number, column: number) => {
@@ -920,19 +1119,13 @@ export function UltiGridViewport<TValue = CellPrimitive, TMeta = unknown>(
     })
   }, [])
 
-  const cancelPendingColumnResize = useCallback(() => {
-    const pending = pendingColumnResizeRef.current
-    if (!pending) return
-    if (pending.timer !== null) window.clearTimeout(pending.timer)
-    pendingColumnResizeRef.current = null
-  }, [])
-
   const activateColumnResize = useCallback((pending: PendingColumnResize) => {
     if (
       columnResizeSessionRef.current
       || pending.viewportColumn < 0
       || pending.viewportColumn >= columnCount
     ) return
+    cancelHorizontalTouchMotion()
     const { captureTarget, direction, input, pointerId, scrollColumns, startX, viewportColumn } = pending
     const width = columnAxis.getSize(viewportColumn)
     const axisStretchBefore = columnAxis.stretch
@@ -996,6 +1189,7 @@ export function UltiGridViewport<TValue = CellPrimitive, TMeta = unknown>(
       input,
     })
   }, [
+    cancelHorizontalTouchMotion,
     columnAxis,
     columnCount,
     manualColumnFitDisabled,
@@ -1160,6 +1354,7 @@ export function UltiGridViewport<TValue = CellPrimitive, TMeta = unknown>(
           pending.startY,
           event.clientX,
           event.clientY,
+          Math.min(10, mobileOptions.tapSlop),
         )) cancelPendingColumnResize()
         return
       }
@@ -1243,6 +1438,7 @@ export function UltiGridViewport<TValue = CellPrimitive, TMeta = unknown>(
     cancelColumnResize,
     cancelPendingColumnResize,
     columnResizeOptions,
+    mobileOptions.tapSlop,
     onColumnResize,
     storeResizedColumnWidth,
   ])
@@ -1317,6 +1513,7 @@ export function UltiGridViewport<TValue = CellPrimitive, TMeta = unknown>(
     }
     event.preventDefault()
     touchTapRef.current = null
+    touchDragScrollAxisRef.current = null
     rootRef.current?.focus({ preventScroll: true })
     dragRef.current = true
     dragPointerIdRef.current = event.pointerId
@@ -1353,10 +1550,18 @@ export function UltiGridViewport<TValue = CellPrimitive, TMeta = unknown>(
     dragPointerIdRef.current = event.pointerId
     dragPointerTypeRef.current = event.pointerType
     dragPointerRef.current = { x: event.clientX, y: event.clientY }
+    touchDragScrollAxisRef.current = dominantTouchScrollEnabled && event.pointerType === 'touch'
+      ? {
+          pointerId: event.pointerId,
+          startX: event.clientX,
+          startY: event.clientY,
+          axis: null,
+        }
+      : null
     if (!selectionModelRef.current) {
       commitSelection({ anchor: address, focus: address })
     }
-  }, [commitSelection])
+  }, [commitSelection, dominantTouchScrollEnabled])
 
   const extendSelection = useCallback((address: CellAddress) => {
     if (!dragRef.current || !selectableBounds) return
@@ -1406,11 +1611,17 @@ export function UltiGridViewport<TValue = CellPrimitive, TMeta = unknown>(
     const scroller = scrollerRef.current
     if (!dragRef.current || !pointer || !viewport || !scroller) return
 
+    const touchAxisSession = dragPointerTypeRef.current === 'touch'
+      ? touchDragScrollAxisRef.current
+      : null
+    if (touchAxisSession && touchAxisSession.axis === null) return
+
     const bounds = viewport.getBoundingClientRect()
     const velocity = getDragAutoScrollVelocity(pointer, bounds, {
       edgeThreshold: dragPointerTypeRef.current === 'touch'
         ? mobileOptions.edgeAutoScrollThreshold
         : 0,
+      axis: touchAxisSession?.axis ?? undefined,
     })
     if (velocity.x === 0 && velocity.y === 0) return
 
@@ -1437,6 +1648,7 @@ export function UltiGridViewport<TValue = CellPrimitive, TMeta = unknown>(
     dragPointerRef.current = null
     dragPointerIdRef.current = null
     dragPointerTypeRef.current = null
+    touchDragScrollAxisRef.current = null
     if (dragAutoScrollRafRef.current !== null) {
       cancelAnimationFrame(dragAutoScrollRafRef.current)
       dragAutoScrollRafRef.current = null
@@ -1459,10 +1671,26 @@ export function UltiGridViewport<TValue = CellPrimitive, TMeta = unknown>(
         }
       }
 
+      updateHorizontalTouchScroll(event)
+
       if (!dragRef.current || dragPointerIdRef.current !== event.pointerId) return
       if (event.pointerType !== 'touch' && event.buttons === 0) {
         stopDragging()
         return
+      }
+      const touchAxisSession = touchDragScrollAxisRef.current
+      if (
+        event.pointerType === 'touch'
+        && touchAxisSession?.pointerId === event.pointerId
+        && touchAxisSession.axis === null
+      ) {
+        touchAxisSession.axis = resolveTouchScrollIntent(
+          touchAxisSession.startX,
+          touchAxisSession.startY,
+          event.clientX,
+          event.clientY,
+          mobileOptions.tapSlop,
+        )
       }
       if (event.pointerType === 'touch' && event.cancelable) event.preventDefault()
       const pointer = { x: event.clientX, y: event.clientY }
@@ -1478,14 +1706,18 @@ export function UltiGridViewport<TValue = CellPrimitive, TMeta = unknown>(
         touchTapRef.current = null
         if (isCompletedTouchTap(touchTarget, event.pointerId)) commitTouchTap(touchTarget)
       }
+      finishHorizontalTouchScroll(event.pointerId, event.timeStamp, true)
       if (dragPointerIdRef.current === event.pointerId) stopDragging()
     }
     const cancelPointer = (event: PointerEvent) => {
       if (touchTapRef.current?.pointerId === event.pointerId) touchTapRef.current = null
+      finishHorizontalTouchScroll(event.pointerId, event.timeStamp, false)
       if (dragPointerIdRef.current === event.pointerId) stopDragging()
     }
     const cancelAllPointers = () => {
       touchTapRef.current = null
+      cancelHorizontalTouchScroll()
+      stopHorizontalScrollInertia()
       stopDragging()
     }
     window.addEventListener('pointermove', trackPointer)
@@ -1499,20 +1731,27 @@ export function UltiGridViewport<TValue = CellPrimitive, TMeta = unknown>(
       window.removeEventListener('blur', cancelAllPointers)
     }
   }, [
+    cancelHorizontalTouchScroll,
     commitTouchTap,
+    finishHorizontalTouchScroll,
     mobileOptions.tapSlop,
     runDragAutoScroll,
+    stopHorizontalScrollInertia,
     stopDragging,
+    updateHorizontalTouchScroll,
     updateDragSelection,
   ])
 
   useEffect(() => () => {
     touchTapRef.current = null
+    cancelHorizontalTouchScroll()
+    stopHorizontalScrollInertia()
     stopDragging()
-  }, [stopDragging])
+  }, [cancelHorizontalTouchScroll, stopDragging, stopHorizontalScrollInertia])
 
   const handleKeyDown = useCallback((event: ReactKeyboardEvent<HTMLDivElement>) => {
     setLastInputWasTouch(false)
+    cancelHorizontalTouchMotion()
     if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'c') {
       if (selection) {
         event.preventDefault()
@@ -1553,6 +1792,7 @@ export function UltiGridViewport<TValue = CellPrimitive, TMeta = unknown>(
     scrollToCell,
     copySelection,
     selectableBounds,
+    cancelHorizontalTouchMotion,
   ])
 
   const autoSizeOptions = useMemo(() => normalizeAutoSize(autoSize), [autoSize])
@@ -1876,6 +2116,7 @@ export function UltiGridViewport<TValue = CellPrimitive, TMeta = unknown>(
   const rootClassName = [
     'ultigrid-root',
     mobileEnabled && 'ultigrid-root--mobile',
+    dominantTouchScrollEnabled && 'ultigrid-root--axis-lock',
     className,
   ].filter(Boolean).join(' ')
   const rootStyle = useMemo(
@@ -1905,10 +2146,21 @@ export function UltiGridViewport<TValue = CellPrimitive, TMeta = unknown>(
       tabIndex={0}
       onKeyDown={handleKeyDown}
       data-mobile-interaction={mobileEnabled ? 'true' : 'false'}
+      data-scroll-axis-lock={dominantTouchScrollEnabled ? 'dominant' : 'native'}
       data-rendered-rows={renderedRowCount}
       data-rendered-columns={renderedColumnCount}
     >
-      <div ref={scrollerRef} className="ultigrid-scroller" onScroll={handleScroll}>
+      <div
+        ref={scrollerRef}
+        className="ultigrid-scroller"
+        onLostPointerCapture={(event) => {
+          if (event.target !== event.currentTarget) return
+          finishHorizontalTouchScroll(event.pointerId, event.timeStamp, false)
+        }}
+        onPointerDownCapture={beginHorizontalTouchScroll}
+        onScroll={handleScroll}
+        onWheel={cancelHorizontalTouchMotion}
+      >
         <div className="ultigrid-canvas" style={{ width: canvasWidth, height: canvasHeight }}>
           <div
             ref={viewportRef}

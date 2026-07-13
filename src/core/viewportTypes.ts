@@ -97,6 +97,11 @@ export interface MobileInteractionLabels {
 export interface MobileInteractionOptions {
   /** `auto` follows coarse-pointer/touch capability. Defaults to `auto`. */
   mode?: MobileInteractionMode
+  /**
+   * `dominant` locks one-finger scrolling to the first clear axis while
+   * `native` leaves two-axis panning to the browser. Defaults to `dominant`.
+   */
+  scrollAxisLock?: 'dominant' | 'native'
   /** Movement in CSS pixels allowed before a touch stops being a tap. Defaults to 10. */
   tapSlop?: number
   /** Distance from an edge that starts drag-selection auto-scroll. Defaults to 36. */

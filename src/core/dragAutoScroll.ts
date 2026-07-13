@@ -16,6 +16,8 @@ interface Bounds {
 interface AutoScrollOptions {
   /** Starts scrolling while the pointer is this many pixels inside an edge. */
   edgeThreshold?: number
+  /** Restricts touch-driven auto-scroll after the gesture chooses an axis. */
+  axis?: 'horizontal' | 'vertical'
 }
 
 interface ViewportRect {
@@ -47,9 +49,11 @@ export function getDragAutoScrollVelocity(
   options: AutoScrollOptions = {},
 ): Point {
   const threshold = Math.max(0, options.edgeThreshold ?? 0)
+  const x = edgeVelocity(pointer.x, bounds.left, bounds.right, threshold)
+  const y = edgeVelocity(pointer.y, bounds.top, bounds.bottom, threshold)
   return {
-    x: edgeVelocity(pointer.x, bounds.left, bounds.right, threshold),
-    y: edgeVelocity(pointer.y, bounds.top, bounds.bottom, threshold),
+    x: options.axis === 'vertical' ? 0 : x,
+    y: options.axis === 'horizontal' ? 0 : y,
   }
 }
 

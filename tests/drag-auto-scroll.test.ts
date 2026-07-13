@@ -26,6 +26,16 @@ describe('drag selection auto-scroll', () => {
     )).toEqual({ x: 0, y: 0 })
   })
 
+  it('keeps touch drag auto-scroll on the resolved gesture axis', () => {
+    const bounds = { left: 100, right: 500, top: 50, bottom: 350 }
+    const pointer = { x: 90, y: 370 }
+
+    expect(getDragAutoScrollVelocity(pointer, bounds, { axis: 'horizontal' }))
+      .toEqual({ x: -3.5, y: 0 })
+    expect(getDragAutoScrollVelocity(pointer, bounds, { axis: 'vertical' }))
+      .toEqual({ x: 0, y: 7 })
+  })
+
   it('resolves a clamped pointer against the current scroll position', () => {
     const rows = new Axis({ count: 100, defaultSize: 20 })
     const columns = new Axis({ count: 100, defaultSize: 50 })

@@ -28,7 +28,7 @@ describe('gallery mobile layout contract', () => {
     expect(STUDIO_COMPACT_LAYOUT_QUERY).toContain('(any-pointer: coarse)')
   })
 
-  it('renders an exact 375 by 750 mobile viewport beside compact live state', () => {
+  it('renders a 375 by 750 desktop reference viewport beside live state', () => {
     for (const className of [
       'component-gallery__mobile-demo',
       'component-gallery__mobile-body',
@@ -41,7 +41,7 @@ describe('gallery mobile layout contract', () => {
     expect(mobileExampleSource).toContain('const DEVICE_WIDTH = 375')
     expect(mobileExampleSource).toContain('const DEVICE_HEIGHT = 750')
     expect(mobileExampleSource).toMatch(
-      /className="component-gallery__mobile-screen"\s+data-viewport-width=\{DEVICE_WIDTH\}\s+data-viewport-height=\{DEVICE_HEIGHT\}/s,
+      /className="component-gallery__mobile-screen"\s+data-reference-viewport-width=\{DEVICE_WIDTH\}\s+data-reference-viewport-height=\{DEVICE_HEIGHT\}/s,
     )
     expect(demoCss).toMatch(
       /\.component-gallery__mobile-layout\s*\{[^}]*grid-template-rows:\s*minmax\(0, 1fr\)/s,
@@ -68,11 +68,34 @@ describe('gallery mobile layout contract', () => {
     expect(mobileExampleSource).toContain('component-gallery__mobile-battery')
   })
 
-  it('scrolls instead of shrinking the fixed device in narrow viewports', () => {
+  it('uses a full-bleed compact preview without adding a nested two-axis scroller', () => {
     expect(demoCss).toMatch(
       /@container gallery-example \(max-width: 640px\)[\s\S]*?\.component-gallery__mobile-body\s*\{[^}]*grid-template-areas:\s*\n\s*'device'\s*\n\s*'details'[^}]*grid-template-columns:\s*minmax\(0, 1fr\)/s,
     )
-    expect(demoCss.match(/\.component-gallery__mobile-device\s*\{/g)).toHaveLength(1)
+    expect(demoCss).toMatch(
+      /@media \(max-width: 760px\)[\s\S]*?\.component-gallery__preview\[data-example='mobile'\]\s*\{[^}]*overflow:\s*clip/s,
+    )
+    expect(demoCss).toMatch(
+      /@media \(max-width: 760px\)[\s\S]*?\.component-gallery__mobile-canvas\s*\{[^}]*overflow:\s*clip/s,
+    )
+    expect(demoCss).toMatch(
+      /@media \(max-width: 760px\)[\s\S]*?\.component-gallery__mobile-device\s*\{[^}]*width:\s*100%[^}]*min-width:\s*0[^}]*height:\s*100%[^}]*min-height:\s*0[^}]*aspect-ratio:\s*auto/s,
+    )
+    expect(demoCss).toMatch(
+      /@media \(max-width: 1024px\) and \(max-height: 600px\) and \(orientation: landscape\)[\s\S]*?\.component-gallery__mobile-details\s*\{[^}]*display:\s*none/s,
+    )
+    expect(demoCss).toMatch(
+      /@media \(max-width: 1024px\) and \(max-height: 600px\) and \(orientation: landscape\)[\s\S]*?\.component-gallery__mobile-layout\s*\{[^}]*padding:\s*0[\s\S]*?\.component-gallery__mobile-screen\s*\{[^}]*grid-template-rows:\s*0 44px minmax\(0, 1fr\) 0/s,
+    )
+    expect(demoCss).toMatch(
+      /@media \(max-width: 1024px\) and \(max-height: 600px\) and \(orientation: landscape\)[\s\S]*?\.component-gallery__mobile-statusbar,[\s\S]*?\.component-gallery__mobile-home-indicator\s*\{[^}]*display:\s*none/s,
+    )
+    expect(demoCss).toMatch(
+      /\.component-gallery__mobile-grid \.ultigrid-scroller\s*\{[^}]*scrollbar-width:\s*auto[^}]*scrollbar-color:\s*auto/s,
+    )
+    expect(demoCss).toMatch(
+      /\.component-gallery__mobile-grid \.ultigrid-scroller::-webkit-scrollbar\s*\{[^}]*width:\s*0[^}]*height:\s*5px/s,
+    )
   })
 
   it('floats the source entry without consuming phone height', () => {
