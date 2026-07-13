@@ -2053,6 +2053,9 @@
     justify-content: stretch;
     padding: 0;
     overflow: clip;
+    border: 0;
+    border-radius: 0;
+    background: #fff;
   }
 
   .component-gallery__mobile-device {
@@ -2066,7 +2069,7 @@
     padding: 0;
     aspect-ratio: auto;
     border: 0;
-    border-radius: 16px;
+    border-radius: 0;
     background: #fff;
     box-shadow: none;
   }
@@ -2075,11 +2078,16 @@
     width: 100%;
     height: 100%;
     aspect-ratio: auto;
-    border-radius: 16px;
+    grid-template-rows: 0 0 minmax(0, 1fr) 0;
+    border-radius: 0;
+    box-shadow: none;
   }
 
   .component-gallery__mobile-device-control,
-  .component-gallery__mobile-device-island {
+  .component-gallery__mobile-device-island,
+  .component-gallery__mobile-statusbar,
+  .component-gallery__mobile-appbar,
+  .component-gallery__mobile-home-indicator {
     display: none;
   }
 

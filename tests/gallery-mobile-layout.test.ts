@@ -68,7 +68,7 @@ describe('gallery mobile layout contract', () => {
     expect(mobileExampleSource).toContain('component-gallery__mobile-battery')
   })
 
-  it('uses a full-bleed compact preview without adding a nested two-axis scroller', () => {
+  it('uses the real mobile viewport without a simulated device shell', () => {
     expect(demoCss).toMatch(
       /@container gallery-example \(max-width: 640px\)[\s\S]*?\.component-gallery__mobile-body\s*\{[^}]*grid-template-areas:\s*\n\s*'device'\s*\n\s*'details'[^}]*grid-template-columns:\s*minmax\(0, 1fr\)/s,
     )
@@ -76,10 +76,16 @@ describe('gallery mobile layout contract', () => {
       /@media \(max-width: 760px\)[\s\S]*?\.component-gallery__preview\[data-example='mobile'\]\s*\{[^}]*overflow:\s*clip/s,
     )
     expect(demoCss).toMatch(
-      /@media \(max-width: 760px\)[\s\S]*?\.component-gallery__mobile-canvas\s*\{[^}]*overflow:\s*clip/s,
+      /@media \(max-width: 760px\)[\s\S]*?\.component-gallery__mobile-canvas\s*\{[^}]*overflow:\s*clip[^}]*border:\s*0[^}]*border-radius:\s*0/s,
     )
     expect(demoCss).toMatch(
       /@media \(max-width: 760px\)[\s\S]*?\.component-gallery__mobile-device\s*\{[^}]*width:\s*100%[^}]*min-width:\s*0[^}]*height:\s*100%[^}]*min-height:\s*0[^}]*aspect-ratio:\s*auto/s,
+    )
+    expect(demoCss).toMatch(
+      /@media \(max-width: 760px\)[\s\S]*?\.component-gallery__mobile-screen\s*\{[^}]*grid-template-rows:\s*0 0 minmax\(0, 1fr\) 0[^}]*border-radius:\s*0/s,
+    )
+    expect(demoCss).toMatch(
+      /@media \(max-width: 760px\)[\s\S]*?\.component-gallery__mobile-device-control,[\s\S]*?\.component-gallery__mobile-statusbar,[\s\S]*?\.component-gallery__mobile-appbar,[\s\S]*?\.component-gallery__mobile-home-indicator\s*\{[^}]*display:\s*none/s,
     )
     expect(demoCss).toMatch(
       /@media \(max-width: 1024px\) and \(max-height: 600px\) and \(orientation: landscape\)[\s\S]*?\.component-gallery__mobile-details\s*\{[^}]*display:\s*none/s,
