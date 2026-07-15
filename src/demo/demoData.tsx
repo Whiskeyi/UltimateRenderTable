@@ -49,17 +49,20 @@ const AVATARS = [
   svgAvatar('GY', '#e0f4f5', '#25747a'),
 ]
 
-const COLUMN_WIDTHS: Record<StudioScenario, ReadonlyMap<number, number>> = {
+const COLUMN_WIDTHS: Record<StudioScenario | 'conditional', ReadonlyMap<number, number>> = {
   intro: new Map(),
   gallery: new Map(),
   analysis: new Map([
     [0, 200], [1, 160], [2, 148], [3, 108], [4, 136],
     [5, 116], [6, 116], [7, 148], [8, 160], [9, 166],
+    [10, 164], [11, 142], [12, 132], [13, 126], [14, 132],
+    [15, 152], [16, 136], [17, 190],
   ]),
   conditional: new Map([
     [0, 182], [1, 164], [2, 142], [3, 132], [4, 126],
     [5, 132], [6, 152], [7, 136], [8, 190],
   ]),
+  spreadsheet: new Map(),
 }
 
 const TREE_COLUMN_WIDTHS = new Map([
@@ -77,7 +80,7 @@ export interface DemoRowSourceOptions extends DemoViewOptions {
 }
 
 export function getDemoColumnWidths(
-  scenario: StudioScenario,
+  scenario: StudioScenario | 'conditional',
   options: DemoViewOptions = {},
 ): ReadonlyMap<number, number> {
   if (scenario === 'analysis' && options.treeEnabled) return TREE_COLUMN_WIDTHS
@@ -241,7 +244,7 @@ function branchPositionForLeaf(position: number): number {
 }
 
 export function createDemoColumnGetter(
-  scenario: StudioScenario,
+  scenario: StudioScenario | 'conditional',
   locale: Locale,
   options: DemoViewOptions = {},
 ) {
@@ -255,12 +258,17 @@ export function createDemoColumnGetter(
 }
 
 function createScenarioColumns(
-  scenario: StudioScenario,
+  scenario: StudioScenario | 'conditional',
   locale: Locale,
   options: DemoViewOptions,
 ): InsightColumn<DemoRow>[] {
   if (scenario === 'conditional') return createConditionalColumns(locale)
-  if (scenario === 'analysis' && options.treeEnabled) return createTreeColumns(locale)
+  if (scenario === 'analysis' && options.treeEnabled) {
+    return [...createTreeColumns(locale), ...createConditionalColumns(locale).slice(1)]
+  }
+  if (scenario === 'analysis') {
+    return [...createAnalysisColumns(locale), ...createConditionalColumns(locale).slice(1)]
+  }
   return createAnalysisColumns(locale)
 }
 
@@ -307,6 +315,12 @@ function createAnalysisColumns(locale: Locale): InsightColumn<DemoRow>[] {
       header: <ColumnHeader label={translate(locale, 'demo.column.product')} />,
       headerText: translate(locale, 'demo.column.product'),
       getValue: (row) => PRODUCTS[Math.floor(row.index / PRODUCT_GROUP_SIZE) % PRODUCTS.length],
+      renderContent: ({ displayValue, rowIndex }) => (
+        <span className="demo-product-cell">
+          <i>{['CL', 'AT', 'NB', 'PC', 'AI', 'DB'][Math.floor(rowIndex / PRODUCT_GROUP_SIZE) % 6]}</i>
+          <span><strong>{displayValue}</strong><small>{translate(locale, 'analysis.cell.productMix', { value: 18 + rowIndex % 16 })}</small></span>
+        </span>
+      ),
       visualStyle: { color: '#59635d' },
     },
     {
@@ -343,7 +357,21 @@ function createAnalysisColumns(locale: Locale): InsightColumn<DemoRow>[] {
       headerText: translate(locale, 'demo.column.orders'),
       getValue: (row) => 80 + Math.round(metricValue(row.index, 3) / 370),
       formatValue: (value) => number.format(Number(value)),
-      visualStyle: numericStyle(),
+      renderContent: ({ value, displayValue, rowIndex }) => {
+        const digital = 36 + rowIndex % 32
+        const partner = 22 + rowIndex % 18
+        return (
+          <span className="demo-orders-cell">
+            <strong>{displayValue}</strong>
+            <span aria-hidden="true">
+              <i className="is-direct" style={{ width: `${digital}%` }} />
+              <i className="is-partner" style={{ width: `${Math.min(100 - digital, partner)}%` }} />
+            </span>
+            <small>{translate(locale, 'analysis.cell.orders', { value: Math.round(Number(value) * 0.18) })}</small>
+          </span>
+        )
+      },
+      visualStyle: { ...numericStyle(), paddingInline: 9 },
     },
     createCompletionColumn(locale),
     createChangeColumn(locale),
@@ -357,6 +385,20 @@ function createAnalysisColumns(locale: Locale): InsightColumn<DemoRow>[] {
           {displayValue}
         </span>
       ),
+      conditionalRules: [
+        {
+          id: 'status-risk-background',
+          kind: 'background',
+          when: { operator: 'equals', value: statuses[3] },
+          color: '#fff2f0',
+        },
+        {
+          id: 'status-healthy-background',
+          kind: 'background',
+          when: { operator: 'equals', value: statuses[1] },
+          color: '#f0faf4',
+        },
+      ],
     },
     {
       id: 'owner',
@@ -642,6 +684,12 @@ function createCompletionColumn(locale: Locale): InsightColumn<DemoRow> {
     headerText: translate(locale, 'demo.column.completion'),
     getValue: (row) => 0.54 + (metricValue(row.index, 4) % 6900) / 10_000,
     formatValue: (value) => `${(Number(value) * 100).toFixed(1)}%`,
+    renderContent: ({ value, displayValue }) => (
+      <span className="demo-attainment-cell">
+        <span><i style={{ width: `${Math.min(100, Number(value) * 100)}%` }} /></span>
+        <strong>{displayValue}</strong>
+      </span>
+    ),
     visualStyle: { horizontalAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 650 },
     conditionalRules: [
       {

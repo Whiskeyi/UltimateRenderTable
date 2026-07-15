@@ -22,6 +22,7 @@ import {
   RotateCcw,
   Rows3,
   Settings2,
+  Sheet,
   Sparkles,
   Table2,
   TriangleAlert,
@@ -109,32 +110,36 @@ const SCENARIOS: ScenarioOption[] = [
     icon: LayoutDashboard,
     patch: {
       scenario: 'analysis',
-      rowHeight: 42,
+      rowHeight: 48,
       frozenTopRows: 1,
       frozenLeftColumns: 2,
       showGridLines: true,
       stripedRows: true,
       showRowNumbers: true,
       treeEnabled: false,
-      mergeSameValueDimensions: true,
+      mergeSameValueDimensions: false,
     },
   },
   {
-    value: 'conditional',
+    value: 'spreadsheet',
     kind: 'table',
-    labelKey: 'scenario.conditional',
-    detailKey: 'scenario.conditional.detail',
-    icon: Sparkles,
+    labelKey: 'scenario.spreadsheet',
+    detailKey: 'scenario.spreadsheet.detail',
+    icon: Sheet,
     patch: {
-      scenario: 'conditional',
-      rowHeight: 38,
-      frozenTopRows: 1,
-      frozenLeftColumns: 1,
-      showGridLines: false,
+      scenario: 'spreadsheet',
+      rowCount: 200,
+      columnCount: 26,
+      rowHeight: 30,
+      columnWidth: 112,
+      frozenTopRows: 2,
+      frozenLeftColumns: 0,
+      showGridLines: true,
       stripedRows: false,
-      showRowNumbers: false,
+      showRowNumbers: true,
       treeEnabled: false,
       mergeSameValueDimensions: false,
+      fitColumns: false,
     },
   },
 ]
@@ -248,7 +253,7 @@ function normalizeConfig<TConfig extends StudioTableConfig>(
   }
 
   const next = { ...current, ...(candidate as Partial<TConfig>) }
-  const scenarios: StudioScenario[] = ['intro', 'gallery', 'analysis', 'conditional']
+  const scenarios: StudioScenario[] = ['intro', 'gallery', 'analysis', 'spreadsheet']
   const densities: StudioDensity[] = ['compact', 'comfortable', 'relaxed']
 
   if (!scenarios.includes(next.scenario)) {
@@ -625,7 +630,14 @@ export function Studio<TConfig extends StudioTableConfig = StudioTableConfig>({
   )
 
   const resetConfig = useCallback(() => {
-    const next = { ...DEFAULT_STUDIO_CONFIG, ...defaultValue } as TConfig
+    const activeScenarioDefaults = SCENARIOS.find(
+      (scenario) => scenario.value === latestConfigRef.current.scenario,
+    )?.patch
+    const next = {
+      ...DEFAULT_STUDIO_CONFIG,
+      ...defaultValue,
+      ...activeScenarioDefaults,
+    } as TConfig
     commit(next, { source: 'reset' })
     setJsonDraft(serializeConfig(next))
     setJsonError(null)
@@ -932,7 +944,7 @@ export function Studio<TConfig extends StudioTableConfig = StudioTableConfig>({
   }, [mobileLayout])
 
   const handleKeyboard = (event: KeyboardEvent<HTMLElement>) => {
-    if ((event.metaKey || event.ctrlKey) && event.key === '\\') {
+    if (supportsInspector && (event.metaKey || event.ctrlKey) && event.key === '\\') {
       event.preventDefault()
       setInspectorOpen((open) => !open)
     }
@@ -955,7 +967,9 @@ export function Studio<TConfig extends StudioTableConfig = StudioTableConfig>({
 
   const activeScenario = SCENARIOS.find((item) => item.value === config.scenario) ?? SCENARIOS[0]!
   const isTableScenario = activeScenario.kind === 'table'
-  const effectiveInspectorOpen = inspectorOpen && isTableScenario
+  const isSpreadsheetScenario = config.scenario === 'spreadsheet'
+  const supportsInspector = isTableScenario && !isSpreadsheetScenario
+  const effectiveInspectorOpen = inspectorOpen && supportsInspector
   const mobileInspectorModalOpen = mobileLayout && effectiveInspectorOpen
   const previousTableScenarioRef = useRef(isTableScenario)
   const activePreset = SCALE_PRESETS.find(
@@ -1131,7 +1145,7 @@ export function Studio<TConfig extends StudioTableConfig = StudioTableConfig>({
               </div>
             </>
           ) : null}
-          {isTableScenario ? (
+          {supportsInspector ? (
             <button
               ref={inspectorToggleRef}
               type="button"
@@ -1161,7 +1175,7 @@ export function Studio<TConfig extends StudioTableConfig = StudioTableConfig>({
             <div className="studio-stage-title">
               <span className="studio-live-dot" />
               <span>
-                <strong>UltiGrid Insight</strong>
+                <strong>{isSpreadsheetScenario ? 'UltiGrid Sheets' : 'UltiGrid Insight'}</strong>
                 <small>{t(activeScenario.labelKey)} · {t(activeScenario.detailKey)}</small>
               </span>
             </div>
@@ -1172,6 +1186,13 @@ export function Studio<TConfig extends StudioTableConfig = StudioTableConfig>({
                   <span>@ultigrid/core</span>
                   <i aria-hidden="true" />
                   <span>@ultigrid/insight</span>
+                </span>
+              ) : isSpreadsheetScenario ? (
+                <span className="studio-package-pair studio-sheet-mode">
+                  <Sheet size={13} />
+                  <span>{t('spreadsheet.bookLabel')}</span>
+                  <i aria-hidden="true" />
+                  <span>A1:Z200</span>
                 </span>
               ) : (
                 <>
@@ -1276,6 +1297,13 @@ export function Studio<TConfig extends StudioTableConfig = StudioTableConfig>({
                 <span className="studio-status-spacer" />
                 <span>React · TypeScript · DOM</span>
               </>
+            ) : isSpreadsheetScenario ? (
+              <>
+                <span><Sheet size={13} /> {t('spreadsheet.status.ready')}</span>
+                <span>{t('spreadsheet.status.selection')}</span>
+                <span className="studio-status-spacer" />
+                <span>{t('spreadsheet.status.cells', { count: '5,200' })}</span>
+              </>
             ) : (
               <>
                 <span><Zap size={13} /> Windowed DOM</span>
@@ -1298,7 +1326,7 @@ export function Studio<TConfig extends StudioTableConfig = StudioTableConfig>({
           />
         ) : null}
 
-        <aside
+        {supportsInspector ? <aside
           ref={inspectorRef}
           id={inspectorId}
           className="studio-inspector"
@@ -1630,7 +1658,7 @@ export function Studio<TConfig extends StudioTableConfig = StudioTableConfig>({
             <span><kbd>⌘</kbd><kbd>\</kbd> {t('studio.shortcuts.panel')}</span>
             <span><kbd>⌘</kbd><kbd>⇧</kbd><kbd>0</kbd> {t('studio.shortcuts.reset')}</span>
           </footer>
-        </aside>
+        </aside> : null}
       </section>
     </main>
   )

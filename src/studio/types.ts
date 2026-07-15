@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 
-export type StudioScenario = 'intro' | 'gallery' | 'analysis' | 'conditional'
+export type StudioScenario = 'intro' | 'gallery' | 'analysis' | 'spreadsheet'
 
 export type StudioDensity = 'compact' | 'comfortable' | 'relaxed'
 
@@ -85,7 +85,7 @@ export const DEFAULT_STUDIO_CONFIG: StudioTableConfig = {
   scenario: 'analysis',
   rowCount: 1_000,
   columnCount: 40,
-  rowHeight: 42,
+  rowHeight: 48,
   columnWidth: 136,
   overscanRows: 2,
   overscanColumns: 1,
@@ -101,6 +101,6 @@ export const DEFAULT_STUDIO_CONFIG: StudioTableConfig = {
   showRowNumbers: true,
   themeColor: '#198754',
   treeEnabled: false,
-  mergeSameValueDimensions: true,
+  mergeSameValueDimensions: false,
   treeExpandedByDefault: true,
 }

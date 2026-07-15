@@ -41,4 +41,17 @@ describe('Studio mobile shell', () => {
       '(max-width: 1024px) and (max-height: 600px) and (orientation: landscape)',
     )
   })
+
+  it('removes Props Lab from the spreadsheet scenario', () => {
+    const markup = renderToStaticMarkup(
+      <I18nProvider>
+        <Studio defaultValue={{ scenario: 'spreadsheet' }} />
+      </I18nProvider>,
+    )
+
+    expect(markup).toContain('UltiGrid Sheets')
+    expect(markup).toContain('销售计划.xlsx')
+    expect(markup).not.toContain('Props Lab')
+    expect(markup).not.toContain('data-testid="studio-inspector"')
+  })
 })

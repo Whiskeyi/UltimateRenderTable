@@ -29,7 +29,7 @@ describe('demo scenario columns', () => {
     expect(signatures.map((signature) => signature.slice(0, 3))).toEqual([
       [
         'dimension[custom-dom]',
-        'product[text]',
+        'product[custom-dom]',
         'revenue[custom-dom+rules:dataBar,text]',
       ],
       [
@@ -38,6 +38,25 @@ describe('demo scenario columns', () => {
         'attainment-scale[text+rules:colorScale]',
       ],
     ])
+  })
+
+  it('folds the former conditional-format scene into the analytics report', () => {
+    const getColumn = createDemoColumnGetter('analysis', 'zh-CN')
+    const signalColumns = Array.from({ length: 8 }, (_, index) => getColumn(index + 10))
+
+    expect(signalColumns.map((column) => column.id)).toEqual([
+      'revenue-bar',
+      'attainment-scale',
+      'variance-icon',
+      'margin-text',
+      'risk-background',
+      'sla-bar',
+      'quality-icon',
+      'rule-legend',
+    ])
+    expect(new Set(signalColumns.flatMap((column) => (
+      column.conditionalRules?.map((rule) => rule.kind) ?? []
+    )))).toEqual(new Set(['dataBar', 'colorScale', 'icon', 'text', 'background']))
   })
 
   it('reuses business analytics with a tree column composition when enabled', () => {
