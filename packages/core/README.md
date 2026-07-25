@@ -4,7 +4,7 @@ The rendering grid behind UltiGrid: a React DOM viewport engine with two-axis vi
 
 Core reads cells by coordinate and keeps BI semantics outside the rendering hot path. It does not allocate a two-dimensional data matrix or infer merges from business values.
 
-> Status: **0.1.0 / Alpha**. ESM-only; React and ReactDOM `>=18.2 <20` are peer dependencies.
+> Status: **0.2.0 / Alpha**. ESM-only; React and ReactDOM `>=18.2 <20` are peer dependencies.
 
 ## Install
 
@@ -50,7 +50,7 @@ export function CoordinateGrid() {
 }
 ```
 
-Coordinates are zero-based and range ends are inclusive. Keep getters, size maps, merge arrays, and renderers referentially stable. Increment `contentVersion` whenever data behind a stable getter mutates in place.
+Coordinates are zero-based and range ends are inclusive. Keep getters, size maps, merge arrays, and renderers referentially stable. Increment `contentVersion` whenever data behind a stable getter mutates in place; Core invalidates memoized cell content and automatic measurement without resetting manual column widths. Use `columnLayoutVersion`, not `contentVersion`, when an external layout must replace active sizing.
 
 ## Public contract
 
@@ -73,7 +73,7 @@ Only these package paths are supported:
 
 Axis, virtualizer, MergeIndex, and selection helpers are internal implementations.
 
-Accessibility is currently partial: Core exposes the grid/treegrid root, cell/header roles and indices, merged spans, multi-selection state, and rendered active-cell linkage. Its absolutely positioned pane DOM does not yet emit canonical `row` / `rowgroup` ownership, so version 0.1.0 does not claim a complete APG Grid structure or uniform row navigation across screen readers. When Tab traversal reaches a selection boundary, Core releases native browser traversal; focusable descendants such as tree controls and column-resize separators remain in that tab order.
+Core exposes the grid/treegrid root, a logical rowgroup/row structure, cross-pane `aria-owns`, cell/header roles and indices, merged spans, multi-selection state, and rendered active-cell linkage. Tree level/expanded/busy state belongs to the logical row, while absolutely positioned cells remain in their visual frozen panes. Chromium Accessibility Tree coverage verifies that ownership contract; production integrations should still test their target NVDA/VoiceOver versions. When Tab traversal reaches a selection boundary, Core releases native browser traversal; focusable descendants such as tree controls and column-resize separators remain in that tab order.
 
 `mobileInteraction` defaults to automatic coarse-pointer and live touch-input detection, so hybrid laptops do not show touch chrome until it is useful. One-finger scrolling uses a dominant-axis lock: vertical movement keeps native browser scrolling and momentum, while a clearly horizontal gesture updates only `scrollLeft` and continues with single-axis momentum. Set `scrollAxisLock: 'native'` to restore browser-managed two-axis panning. A cell is selected only after a tap completes without a pan or scroll. The active cell exposes a 44 px drag target for range extension and edge auto-scroll, while a 44 px safe-area-aware action copies the range. Use `labels` to localize every visible or announced string, or set `showCopyAction: false` when the host supplies its own toolbar.
 
@@ -103,9 +103,11 @@ See the project [architecture](https://github.com/Whiskeyi/UltimateRenderTable/b
 
 ## Publishing
 
-Repository releases run through `.github/workflows/publish.yml`: every `main` commit builds, tests, and packs both packages, then publishes only versions not already present on npm, in Core → Insight order. A commit without a `package.json` version bump skips publishing safely; use `npm run pack:packages` for the local tarball check.
+Pull requests, merge queues, and `main` pushes run the repository CI matrix: Node 18/20/22 package compatibility, lint/build/bundle budgets, packed Vite consumers, and Chromium interaction tests. Locally, `npm run verify` covers the main non-browser gates; CI additionally repeats the packed consumer with React 18. After `npx playwright install chromium`, `npm run test:e2e` runs the built Studio browser suite.
 
-For the first release, create or own the `@ultigrid` scope and store a granular access token as `NPM_TOKEN` with **Packages and scopes: Read and write** and **Bypass 2FA** enabled, then run `workflow_dispatch`. Afterward, configure Trusted Publisher for both packages as `Whiskeyi / UltimateRenderTable / publish.yml`, set the repository variable `NPM_USE_OIDC=true`, and remove `NPM_TOKEN` after OIDC succeeds.
+Repository releases run through manual-only `.github/workflows/publish.yml`. `workflow_dispatch` with `publish=false` verifies a candidate; `publish=true` enters the protected `npm` environment and publishes verified tarballs in Core → Insight order. A release fails when every target version already exists, so bump each changed package version instead of relying on a silent skip.
+
+For the first release, create or own the `@ultigrid` scope and store a granular access token as `NPM_TOKEN` with **Packages and scopes: Read and write** and **Bypass 2FA** enabled, then run `workflow_dispatch` with `publish=true`. Afterward, configure Trusted Publisher for both packages as `Whiskeyi / UltimateRenderTable / publish.yml`, set the repository variable `NPM_USE_OIDC=true`, and remove `NPM_TOKEN` after OIDC succeeds.
 
 ## License
 

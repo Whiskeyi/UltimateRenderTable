@@ -563,6 +563,8 @@ export function Studio<TConfig extends StudioTableConfig = StudioTableConfig>({
   className,
   onRetry,
   onExport,
+  exportReady = true,
+  onDiagnosticsOpenChange,
   toolbarActions,
 }: StudioProps<TConfig>) {
   const { locale, setLocale, t } = useI18n()
@@ -656,6 +658,14 @@ export function Studio<TConfig extends StudioTableConfig = StudioTableConfig>({
     },
     [],
   )
+
+  useEffect(() => {
+    onDiagnosticsOpenChange?.(diagnosticsOpen)
+  }, [diagnosticsOpen, onDiagnosticsOpenChange])
+
+  useEffect(() => () => {
+    onDiagnosticsOpenChange?.(false)
+  }, [onDiagnosticsOpenChange])
 
   useEffect(() => {
     const previous = previousInspectorOpenRef.current
@@ -835,7 +845,7 @@ export function Studio<TConfig extends StudioTableConfig = StudioTableConfig>({
   }, [])
 
   const runExport = async (format: StudioExportFormat) => {
-    if (!onExport || exporting) return
+    if (!onExport || exporting || !exportReady) return
     setExportOpen(false)
     setExportError(null)
     setExporting(format)
@@ -1102,15 +1112,22 @@ export function Studio<TConfig extends StudioTableConfig = StudioTableConfig>({
                   className="studio-action-button"
                   aria-haspopup="dialog"
                   aria-expanded={exportOpen}
-                  aria-label={t('studio.export')}
-                  disabled={!onExport || Boolean(exporting)}
+                  aria-label={exportReady ? t('studio.export') : t('studio.export.preparing')}
+                  title={exportReady ? undefined : t('studio.export.preparing')}
+                  disabled={!onExport || Boolean(exporting) || !exportReady}
                   onClick={() => {
                     if (mobileLayout) setInspectorOpen(false)
                     setExportOpen((open) => !open)
                   }}
                 >
                   <Download size={16} />
-                  <span>{exporting ? t('studio.exporting', { format: exporting.toUpperCase() }) : t('studio.export')}</span>
+                  <span>
+                    {exporting
+                      ? t('studio.exporting', { format: exporting.toUpperCase() })
+                      : exportReady
+                        ? t('studio.export')
+                        : t('studio.export.preparing')}
+                  </span>
                   <ChevronDown size={14} />
                 </button>
                 <div

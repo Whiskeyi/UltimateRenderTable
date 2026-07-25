@@ -51,7 +51,7 @@ export function serializeCsvValue(value: unknown): string {
   const text = value == null
     ? ''
     : value instanceof Date
-      ? value.toLocaleString()
+      ? Number.isFinite(value.getTime()) ? value.toISOString() : String(value)
       : String(value)
   const protectedText = typeof value === 'string'
     && /^[\u0000-\u0020\u007f-\u009f\ufeff]*[=+\-@]/.test(text)

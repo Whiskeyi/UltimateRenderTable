@@ -6,7 +6,7 @@
 
 UltiGrid 将 `100,000 × 100,000` 视为逻辑坐标空间。数据按坐标读取，行列同时虚拟化，DOM 主要随可见窗口、overscan 与固定区域增长，而不是随完整矩阵面积增长。
 
-> 当前版本为 **0.1.0 / Alpha**。项目不承诺跨设备固定 FPS；性能结论应基于明确的浏览器、硬件、数据与渲染器配置。
+> 当前版本为 **0.2.0 / Alpha**。项目不承诺跨设备固定 FPS；性能结论应基于明确的浏览器、硬件、数据与渲染器配置。
 
 ## 三层仓库架构
 
@@ -66,6 +66,20 @@ export function RevenueTable() {
 
 只需要底层坐标协议和单元格 DOM 控制时，安装 `@ultigrid/core`。完整入口分别见 [Core README](packages/core/README.md) 与 [Insight README](packages/insight/README.md)。
 
+## 从 0.1.x 迁移到 0.2.0
+
+`InsightColumn<TRow, TValue>` 与 `defineInsightColumn` 现在将 `TValue` 约束为可序列化单元格值联合类型：`string | number | boolean | Date | null | undefined`。如果 0.1.x 的列从 `getValue` 返回对象，应改为返回用于显示、格式化、排序和导出的 primitive 或 `Date`。自定义 renderer 仍能取得带类型的源行，因此复杂对象应从 `context.row` 读取：
+
+```tsx
+defineInsightColumn<Order, string>({
+  id: 'customer',
+  getValue: (row) => row.customer.name,
+  renderContent: ({ row }) => <strong>{row.customer.name}</strong>,
+})
+```
+
+这样既保证单元格值兼容内建渲染与导出，也不会丢失对完整领域对象的访问。
+
 ## 表格能力
 
 | 类别 | 能力 |
@@ -77,7 +91,7 @@ export function RevenueTable() {
 | 交互 | 点击与拖拽选择、越界自动滚动、Shift 扩展、方向键/Tab/Enter 导航；移动端主轴锁定滚动、轻点选中、拖拽手柄扩选与浮动复制 |
 | 数据模型 | 行数组、`LazyRowSource`、`FlatRowModel`、`TreeRowModel`、列数组与 `columnCount + getColumn` 惰性列 |
 | 条件格式 | 文本、背景、图标、二/三色阶、正负数据条、优先级与 `stopIfTrue` |
-| 输出与集成 | `scrollToCell`、选区/复制命令式 API，Excel、CSV、当前视口 PNG，数据坐标回调、`localeText` 与部分 ARIA grid/treegrid 语义；尚未实现 row/rowgroup 结构 |
+| 输出与集成 | `scrollToCell`、选区/复制命令式 API，Excel、CSV、当前视口 PNG，数据坐标回调、`localeText`，以及跨冻结 pane 的逻辑 rowgroup/row 所有权 |
 
 详细状态与边界见 [能力清单](docs/CAPABILITIES.md)。
 
@@ -121,7 +135,9 @@ Core 不理解树形、条件格式或“值相同”。Insight 将业务行列�
 
 `100,000 × 100,000` 表示逻辑寻址能力，不代表浏览器创建了 100 亿个值。当前实现使用单一原生滚动坐标，仍受浏览器最大布局尺寸、滚动精度和设备内存影响。固定区域、overscan、自动测量和深层自定义 DOM 都会增加主线程成本。
 
-大规模场景建议保持 getter、尺寸 Map、合并配置和 renderer 的引用稳定；让 `getCell` / `getColumn` 接近 `O(1)`；对宽表使用惰性列；限制固定区、overscan、复制与导出范围。若稳定 getter 背后的可变 store 原地更新，必须同步递增 `contentVersion`，使 cell render 与自动测量缓存失效。
+大规模场景建议保持 getter、尺寸 Map、合并配置和 renderer 的引用稳定；让 `getCell` / `getColumn` 接近 `O(1)`；对宽表使用惰性列；限制固定区、overscan、复制与导出范围。若稳定 getter 背后的可变 store 原地更新，必须同步递增 `contentVersion`。Core 会失效 memoized cell 内容与自动测量；Insight 还会开启新的有界行/行元数据缓存 epoch，因此稳定 `rowSource` 可以安全地原地替换行。`contentVersion` 不会清除用户调整后的列宽；外部布局需要权威覆盖时应使用 `columnLayoutVersion`。
+
+CSV 仍在主线程同步物化。XLSX 导出会在行批次之间让出事件循环（默认每 500 行）；公开的 `UltiGridInsightApi.exportExcel(fileName, range, options)` 第三参数支持 `signal`、`onProgress` 与 `yieldEveryRows`。进度阶段包括 `materializing`、`serializing` 和 `complete`；`AbortSignal` 可在批次之间及序列化前后协作式取消，但 workbook 序列化本身不可中断。因此超大任务仍应限制范围，或交给 Worker/服务端导出管线。
 
 ## Studio 交互层
 
@@ -131,14 +147,16 @@ Studio 默认使用日常档 `1K × 40`、行列 overscan `2 / 1`，并关闭自
 
 | Tab | 内容 |
 | --- | --- |
-| 介绍 | 独立呈现 Studio、应用层表格与表格渲染底座的职责、发布边界和能力摘要，不占用表格演示区域 |
-| 组件展厅 | 按生产用例/基础/进阶分组提供 14 个可交互示例；订单履约、年度预算矩阵与移动现场巡检先验证组合能力，其余示例逐项覆盖惰性行列、多级树、命令式 API 与 Excel/CSV/PNG 导出；每项均可编辑真实 TSX 并实时刷新 |
+| 介绍 | 独立呈现 Studio、应用层表格与表格渲染底座的职责和边界，并提供快速接入、生产用例与包文档入口，不占用表格演示区域 |
+| 组件展厅 | 按生产用例/基础/进阶分组提供 14 个可交互示例；订单履约支持订单/运单/客户搜索、待处理过滤与选区复制交接，年度预算矩阵支持筛选超出预算 ≥ ¥50K 的成本中心、定位最大超支并导出复核 CSV，移动现场巡检验证触控选择与复制；其余示例逐项隔离能力；每项均可编辑真实 TSX 并实时刷新 |
 | 经营分析 | BI 复合维度与指标；树形根节点和分支节点均可展开，至少展示深度 0/1/2；同列合并可独立开启并按兄弟边界断开 |
-| 电子表格 | 以应用集成方式演示编辑、公式、粘贴、填充与撤销/重做，不把这些能力误作渲染底座内建功能 |
+| 电子表格 | 以应用集成方式演示编辑、公式、原子粘贴、复制时的相对公式平移、剪切移动时的公式引用保持、格式、合并/重置保护与撤销/重做；不提供自动填充手柄或序列填充，也不把编辑能力误作渲染底座内建功能 |
 
 组件展厅的编辑器通过 `?raw` 读取与默认预览相同的 `.tsx` 文件，编辑后以 220ms 防抖重新编译。运行时仅解析 `react`、`lucide-react`、`@ultigrid/core` 和 `@ultigrid/insight`，草稿只保存在当前页面内。
 
-窄屏下 Studio 保留完整表格舞台；顶部导航横向滚动并压缩，参数面板进入带遮罩、拖拽把手与安全区适配的底部 sheet。组件展厅将移动现场巡检列为生产用例并提供真实源码。
+窄屏下 Studio 保留完整表格舞台；顶部导航横向滚动并压缩，参数面板进入带遮罩、拖拽把手与安全区适配的底部 sheet。介绍卡片在 320–390px 宽度纵向堆叠；电子表格 Ribbon 分组不再收缩重叠，而是在独立横向轨道内滚动。组件展厅将移动现场巡检列为生产用例并提供真实源码。
+
+电子表格模块在当前页面的顶层场景切换期间通过模块内存保留最多 50 步 undo/redo；`sessionStorage` 只持久化当前工作表快照，同标签页刷新可以恢复表格，但刷新后的 undo/redo 历史为空。卸载或 page hide 会提交待编辑内容；dirty 会话离开页面前会请求确认；系统剪贴板写入失败时剪切不会删除源数据，移动公式时保留原引用；越界粘贴会整笔拒绝；会丢弃数据的合并与重置需确认且仍可撤销。这只是会话恢复：当前没有持久文件保存、服务端同步、多工作表工作簿，也没有自动填充/序列填充。
 
 该编辑器用于本地 Demo 调试，不是安全沙箱：不要自动加载或执行来自 URL、远端存储或第三方分享的不可信源码。
 
@@ -172,32 +190,33 @@ docs/              # 架构与能力边界
 ```bash
 npm ci
 npm run dev
-npm test
-npm run build
-npm run verify:packages
-npm run pack:packages
+npm run verify
+npx playwright install chromium
+npm run test:e2e
 ```
 
-根目录是 private npm workspace；两个 `packages/*` 子包是公开发布边界。
+`npm run verify` 会运行 lint、单元测试、完整构建、gzip 包体预算、包契约检查和 tarball Vite 消费端检查。首次运行前安装一次 Chromium；随后 `npm run test:e2e` 会构建 Studio，并针对构建后的 preview 运行交互测试；已有 `build:demo` 产物时可直接运行 `npm run test:e2e:built`。`npm test`、`npm run verify:packages`、`npm run verify:tarballs`、`npm run check:size` 等单项命令仍可独立使用。根目录是 private npm workspace；两个 `packages/*` 子包是公开发布边界。
 
 ## npm 发布
 
-`.github/workflows/publish.yml` 会在 `main` 提交或手动 `workflow_dispatch` 时执行 build、test 和 package tarball 检查（本地同口径命令为 `npm run pack:packages`）。工作流查询 npm 上的现有版本，仅当对应 `package.json` 版本不存在时，按 `@ultigrid/core` → `@ultigrid/insight` 发布；未提升版本的普通提交会安全跳过发布。
+Pull Request、merge queue 与 `main` push 会运行 `.github/workflows/ci.yml`：Node 18/20/22 单测和包兼容性、lint、完整构建、gzip 包体预算、tarball Vite 消费端（含 React 18）以及 Chromium 交互测试。GitHub Pages 只部署通过 `main` CI 的提交。
+
+`.github/workflows/publish.yml` 仅允许手动触发。`workflow_dispatch` 使用 `publish=false` 时只验证发布候选，使用 `publish=true` 时才进入受保护的 `npm` environment，并按 `@ultigrid/core` → `@ultigrid/insight` 发布已验证 tarball。验证会重复 lint、测试、构建、包体预算、包契约和消费端检查。如果所有目标版本都已存在，发布会失败，而不会把“没有发布任何包”报告成成功；发布前必须提升发生变化的包版本。`--allow-existing` 只用于明确复核一个已经完成的发布。
 
 首次发布：
 
 1. 创建或拥有 npm 的 `@ultigrid` scope。
 2. 创建 granular access token，将 **Packages and scopes** 设为 **Read and write** 并启用 **Bypass 2FA**，保存为 GitHub Actions Secret `NPM_TOKEN`。
-3. 通过 `workflow_dispatch` 手动运行发布工作流。
+3. 通过 `workflow_dispatch` 以 `publish=true` 手动运行发布工作流。
 
 首次发布后，推荐分别为两个 npm 包配置 Trusted Publisher：owner `Whiskeyi`、repository `UltimateRenderTable`、workflow `publish.yml`。随后设置仓库 Actions variable `NPM_USE_OIDC=true`，验证 OIDC 发布成功后移除 `NPM_TOKEN`。
 
 ## 路线图
 
-- 建立可复现的浏览器 benchmark 与性能回归预算。
+- 在现有包体预算与浏览器交互测试之外，建立可复现的性能 benchmark。
 - 增加分段滚动/坐标重基，降低超大 CSS 画布限制。
 - 将超大导出迁移到 Worker 或服务端流式管线。
-- 以应用插件补充排序、筛选、分组、聚合、透视和编辑事务。
+- 以应用插件补充排序、筛选、分组、聚合、透视、校验、持久保存与自动填充。
 
 ## 贡献
 

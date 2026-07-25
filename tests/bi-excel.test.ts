@@ -74,6 +74,70 @@ describe('Excel export', () => {
     expect(getRow).not.toHaveBeenCalled()
   })
 
+  it('reports progress and supports cancellation between row batches', async () => {
+    const controller = new AbortController()
+    const progress = vi.fn((event: { completedRows: number }) => {
+      if (event.completedRows === 2) controller.abort()
+    })
+
+    await expect(createExcelExport({
+      rows: Array.from({ length: 8 }, (_, value) => ({ value })),
+      columns: [{ id: 'value', header: 'Value', getValue: (row) => row.value }],
+      signal: controller.signal,
+      onProgress: progress,
+      yieldEveryRows: 2,
+      download: false,
+    })).rejects.toMatchObject({ name: 'AbortError' })
+
+    expect(progress).toHaveBeenNthCalledWith(1, {
+      phase: 'materializing',
+      completedRows: 0,
+      totalRows: 8,
+    })
+    expect(progress).toHaveBeenNthCalledWith(2, {
+      phase: 'materializing',
+      completedRows: 2,
+      totalRows: 8,
+    })
+  })
+
+  it('keeps cancellation checkpoints when accessor rows are unavailable', async () => {
+    const controller = new AbortController()
+    const progress = vi.fn((event: { completedRows: number }) => {
+      if (event.completedRows === 2) controller.abort()
+    })
+
+    await expect(createExcelExport({
+      rows: {
+        getRowCount: () => 8,
+        getRow: () => undefined,
+      },
+      columns: [{ id: 'value', header: 'Value', getValue: () => 'unused' }],
+      signal: controller.signal,
+      onProgress: progress,
+      yieldEveryRows: 2,
+      download: false,
+    })).rejects.toMatchObject({ name: 'AbortError' })
+
+    expect(progress).toHaveBeenCalledWith({
+      phase: 'materializing',
+      completedRows: 2,
+      totalRows: 8,
+    })
+  })
+
+  it.each([0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY, Number.MAX_SAFE_INTEGER + 1])(
+    'rejects an invalid yieldEveryRows value (%s)',
+    async (yieldEveryRows) => {
+      await expect(createExcelExport({
+        rows: [{ id: 1 }],
+        columns: [{ id: 'id', header: 'ID', getValue: (row) => row.id }],
+        yieldEveryRows,
+        download: false,
+      })).rejects.toThrow('yieldEveryRows must be a positive safe integer')
+    },
+  )
+
   it('cleans up the temporary download when the synthetic click throws', () => {
     vi.useFakeTimers()
     const remove = vi.fn()

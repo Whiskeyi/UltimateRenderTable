@@ -28,6 +28,17 @@
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--ultigrid-theme-color, #23a35a) 16%, transparent);
 }
 
+.ultigrid-a11y-rowgroup {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  white-space: nowrap;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  pointer-events: none;
+}
+
 .ultigrid-scroller {
   position: absolute;
   inset: 0;

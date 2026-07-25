@@ -1,6 +1,6 @@
 {
   "name": "@ultigrid/core",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "High-performance DOM viewport engine for virtualized multidimensional grids.",
   "license": "MIT",
   "keywords": ["react", "data-grid", "virtualization", "table", "dom"],

@@ -8,6 +8,7 @@ import {
   parseClipboardMatrix,
   parseSelectionLabel,
   selectionLabel,
+  translateFormulaReferences,
 } from '../src/demo/spreadsheetModel'
 
 describe('spreadsheet model', () => {
@@ -36,6 +37,18 @@ describe('spreadsheet model', () => {
     expect(parseClipboardMatrix('"North\tEnterprise"\t"line 1\nline 2"')).toEqual([
       ['North\tEnterprise', 'line 1\nline 2'],
     ])
+  })
+
+  it('moves copied formulas while preserving absolute and mixed references', () => {
+    expect(translateFormulaReferences(
+      '=SUM(A1,$B2,C$3,$D$4)+A1',
+      2,
+      3,
+      200,
+      26,
+    )).toBe('=SUM(D3,$B4,F$3,$D$4)+D3')
+    expect(translateFormulaReferences('plain text', 2, 3, 200, 26)).toBe('plain text')
+    expect(translateFormulaReferences('=A1', -1, 0, 200, 26)).toBe('#REF!')
   })
 
   it('evaluates arithmetic, references, ranges, functions, and cycles', () => {

@@ -1,4 +1,8 @@
-import { Target } from 'lucide-react'
+import {
+  CircleAlert,
+  Download,
+  Target,
+} from 'lucide-react'
 import {
   useCallback,
   useEffect,
@@ -9,6 +13,8 @@ import {
 } from 'react'
 import {
   UltiGridInsight,
+  type CellRange,
+  type ConditionalFormatRule,
   type InsightColumn,
   type InsightColumnDefinition,
   type LazyRowSource,
@@ -33,6 +39,8 @@ const COLUMN_COUNT = DIMENSION_COLUMN_COUNT + MONTH_COUNT * METRICS_PER_MONTH
 const LATEST_ACTUAL_COLUMN = DIMENSION_COLUMN_COUNT
   + LATEST_ACTUAL_MONTH * METRICS_PER_MONTH
   + 1
+const LATEST_VARIANCE_COLUMN = LATEST_ACTUAL_COLUMN + 1
+export const OVER_BUDGET_THRESHOLD = 50_000
 
 const SEASONAL_FACTOR = [
   0.88,
@@ -129,6 +137,64 @@ function varianceValueFor(rowIndex: number, monthIndex: number): number | null {
   return actual === null ? null : actual - budgetFor(rowIndex, monthIndex)
 }
 
+export function getOverBudgetRowIndexes(
+  threshold = OVER_BUDGET_THRESHOLD,
+): number[] {
+  const indexes: number[] = []
+  for (let index = 0; index < ROW_COUNT; index += 1) {
+    const variance = varianceValueFor(index, LATEST_ACTUAL_MONTH)
+    if (variance !== null && variance >= threshold) indexes.push(index)
+  }
+  return indexes
+}
+
+export function getLargestBudgetVarianceRow(indexes?: readonly number[]): number | null {
+  const candidates = indexes ?? Array.from({ length: ROW_COUNT }, (_, index) => index)
+  let largestRow: number | null = null
+  let largestVariance = Number.NEGATIVE_INFINITY
+  for (const rowIndex of candidates) {
+    const variance = varianceValueFor(rowIndex, LATEST_ACTUAL_MONTH)
+    if (variance !== null && variance > largestVariance) {
+      largestRow = rowIndex
+      largestVariance = variance
+    }
+  }
+  return largestRow
+}
+
+export function getBudgetVarianceConditionalRules(
+  monthIndex: number,
+): readonly ConditionalFormatRule<BudgetRow, number | null>[] {
+  return [
+    {
+      id: `variance-bar-${monthIndex}`,
+      kind: 'dataBar',
+      domain: [-200_000, 200_000],
+      axis: 0,
+      color: 'rgba(196, 72, 67, 0.25)',
+      negativeColor: 'rgba(29, 143, 93, 0.27)',
+    },
+    {
+      id: `variance-positive-${monthIndex}`,
+      kind: 'text',
+      when: { operator: 'greaterThan', value: 0 },
+      style: { color: '#b54c48', fontWeight: 700 },
+    },
+    {
+      id: `variance-negative-${monthIndex}`,
+      kind: 'text',
+      when: { operator: 'lessThan', value: 0 },
+      style: { color: '#177a50', fontWeight: 700 },
+    },
+    {
+      id: `variance-zero-${monthIndex}`,
+      kind: 'text',
+      when: { operator: 'equals', value: 0 },
+      style: { color: '#6d7d75', fontWeight: 600 },
+    },
+  ]
+}
+
 export default function BudgetMatrixExample({ locale, t }: GalleryExampleProps) {
   const apiRef = useRef<UltiGridInsightApi | null>(null)
   const shellRef = useRef<HTMLDivElement | null>(null)
@@ -136,6 +202,9 @@ export default function BudgetMatrixExample({ locale, t }: GalleryExampleProps) 
     typeof window !== 'undefined' && window.innerWidth <= 640
   ))
   const isChinese = locale === 'zh-CN'
+  const [overBudgetOnly, setOverBudgetOnly] = useState(false)
+  const [selection, setSelection] = useState<CellRange | null>(null)
+  const [exportState, setExportState] = useState<'idle' | 'done' | 'failed'>('idle')
 
   useEffect(() => {
     const shell = shellRef.current
@@ -159,6 +228,14 @@ export default function BudgetMatrixExample({ locale, t }: GalleryExampleProps) 
         rows: '个成本中心',
         columns: '列',
         noActual: '待关账',
+        overBudgetOnly: '仅看超预算',
+        threshold: '超出 ¥50K',
+        locateLargest: '定位最大超支',
+        exportReview: '导出复核清单',
+        exported: '复核清单已导出',
+        exportFailed: '导出失败',
+        visible: '条待复核',
+        exportHint: '先筛选超预算项目',
       }
     : {
         division: 'Division',
@@ -171,7 +248,28 @@ export default function BudgetMatrixExample({ locale, t }: GalleryExampleProps) 
         rows: 'cost centers',
         columns: 'columns',
         noActual: 'Pending close',
+        overBudgetOnly: 'Over budget only',
+        threshold: '≥ ¥50K',
+        locateLargest: 'Largest overrun',
+        exportReview: 'Export review list',
+        exported: 'Review list exported',
+        exportFailed: 'Export failed',
+        visible: 'to review',
+        exportHint: 'Filter overruns before export',
       }, [isChinese])
+
+  const reviewIndexes = useMemo(() => getOverBudgetRowIndexes(), [])
+  const rowSource = useMemo<LazyRowSource<BudgetRow>>(() => {
+    if (!overBudgetOnly) return ROW_SOURCE
+    return {
+      rowCount: reviewIndexes.length,
+      getRow: (index) => {
+        const sourceIndex = reviewIndexes[index]!
+        return { id: sourceIndex, index: sourceIndex }
+      },
+      getRowId: (row) => row.id,
+    }
+  }, [overBudgetOnly, reviewIndexes])
 
   const divisions = useMemo(() => isChinese
     ? ['华东', '华南', '华北', '西区', '海外', '平台', '供应链', '企业服务']
@@ -272,34 +370,7 @@ export default function BudgetMatrixExample({ locale, t }: GalleryExampleProps) 
         color: value === null ? '#8b9892' : undefined,
         fontStyle: value === null ? 'italic' : 'normal',
       }),
-      conditionalRules: [
-        {
-          id: `variance-bar-${monthIndex}`,
-          kind: 'dataBar',
-          domain: [-200_000, 200_000],
-          axis: 0,
-          color: 'rgba(29, 143, 93, 0.27)',
-          negativeColor: 'rgba(196, 72, 67, 0.25)',
-        },
-        {
-          id: `variance-positive-${monthIndex}`,
-          kind: 'text',
-          when: { operator: 'greaterThan', value: 0 },
-          style: { color: '#177a50', fontWeight: 700 },
-        },
-        {
-          id: `variance-negative-${monthIndex}`,
-          kind: 'text',
-          when: { operator: 'lessThan', value: 0 },
-          style: { color: '#b54c48', fontWeight: 700 },
-        },
-        {
-          id: `variance-zero-${monthIndex}`,
-          kind: 'text',
-          when: { operator: 'equals', value: 0 },
-          style: { color: '#6d7d75', fontWeight: 600 },
-        },
-      ],
+      conditionalRules: getBudgetVarianceConditionalRules(monthIndex),
     }
   }, [copy, formatMoney, formatVariance, monthLabels])
 
@@ -359,6 +430,44 @@ export default function BudgetMatrixExample({ locale, t }: GalleryExampleProps) 
     apiRef.current?.focus()
   }, [])
 
+  const locateLargestOverrun = useCallback(() => {
+    const sourceRow = getLargestBudgetVarianceRow(reviewIndexes)
+    if (sourceRow === null) return
+    const row = overBudgetOnly ? reviewIndexes.indexOf(sourceRow) : sourceRow
+    if (row < 0) return
+    setSelection({
+      rowStart: row,
+      rowEnd: row,
+      columnStart: LATEST_VARIANCE_COLUMN,
+      columnEnd: LATEST_VARIANCE_COLUMN,
+    })
+    apiRef.current?.scrollToCell({ row, column: LATEST_VARIANCE_COLUMN }, 'center')
+    apiRef.current?.focus()
+  }, [overBudgetOnly, reviewIndexes])
+
+  const exportReview = useCallback(() => {
+    if (!overBudgetOnly || rowSource.rowCount === 0) return
+    try {
+      const api = apiRef.current
+      if (!api) throw new Error('Grid API unavailable')
+      api.exportCsv('budget-overrun-review.csv', {
+        rowStart: 0,
+        rowEnd: rowSource.rowCount - 1,
+        columnStart: 0,
+        columnEnd: LATEST_VARIANCE_COLUMN,
+      })
+      setExportState('done')
+    } catch {
+      setExportState('failed')
+    }
+  }, [overBudgetOnly, rowSource.rowCount])
+
+  useEffect(() => {
+    setSelection(null)
+    setExportState('idle')
+    apiRef.current?.scrollToCell({ row: 0, column: 0 }, 'start')
+  }, [rowSource])
+
   const latestMonth = monthLabels[LATEST_ACTUAL_MONTH] ?? String(LATEST_ACTUAL_MONTH + 1)
 
   return (
@@ -366,27 +475,80 @@ export default function BudgetMatrixExample({ locale, t }: GalleryExampleProps) 
       <div style={TOOLBAR_STYLE}>
         <div style={TOOLBAR_GROUP_STYLE}>
           <strong>{REPORTING_YEAR} · CNY</strong>
-          <span>{integer.format(ROW_COUNT)} {copy.rows} · {COLUMN_COUNT} {copy.columns}</span>
+          <span>{integer.format(rowSource.rowCount)} {copy.rows} · {COLUMN_COUNT} {copy.columns}</span>
           <span>{copy.through} {latestMonth}</span>
+          {overBudgetOnly ? (
+            <strong style={{ color: '#b54708' }}>
+              {integer.format(reviewIndexes.length)} {copy.visible}
+            </strong>
+          ) : null}
         </div>
-        <button
-          type="button"
-          onClick={jumpToLatestActuals}
-          style={BUTTON_STYLE}
-          aria-label={`${copy.jump}: ${latestMonth}`}
-        >
-          <Target size={14} aria-hidden="true" />
-          {copy.jump} · {latestMonth}
-        </button>
+        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
+          <button
+            type="button"
+            aria-pressed={overBudgetOnly}
+            onClick={() => setOverBudgetOnly((current) => !current)}
+            style={{
+              ...BUTTON_STYLE,
+              color: overBudgetOnly ? '#b54708' : BUTTON_STYLE.color,
+              border: overBudgetOnly ? '1px solid #edc48d' : BUTTON_STYLE.border,
+              background: overBudgetOnly ? '#fff6ed' : BUTTON_STYLE.background,
+            }}
+          >
+            <CircleAlert size={14} aria-hidden="true" />
+            {copy.overBudgetOnly} · {copy.threshold}
+          </button>
+          <button
+            type="button"
+            onClick={locateLargestOverrun}
+            style={BUTTON_STYLE}
+          >
+            <Target size={14} aria-hidden="true" />
+            {copy.locateLargest}
+          </button>
+          <button
+            type="button"
+            onClick={exportReview}
+            disabled={!overBudgetOnly}
+            title={overBudgetOnly ? copy.exportReview : copy.exportHint}
+            style={{
+              ...BUTTON_STYLE,
+              opacity: overBudgetOnly ? 1 : 0.5,
+              cursor: overBudgetOnly ? 'pointer' : 'not-allowed',
+            }}
+          >
+            <Download size={14} aria-hidden="true" />
+            {copy.exportReview}
+          </button>
+          <button
+            type="button"
+            onClick={jumpToLatestActuals}
+            style={BUTTON_STYLE}
+            aria-label={`${copy.jump}: ${latestMonth}`}
+          >
+            <Target size={14} aria-hidden="true" />
+            {copy.jump} · {latestMonth}
+          </button>
+          {exportState !== 'idle' ? (
+            <small
+              role={exportState === 'failed' ? 'alert' : 'status'}
+              style={{ color: exportState === 'failed' ? '#b42318' : '#18774f', fontWeight: 700 }}
+            >
+              {exportState === 'failed' ? copy.exportFailed : copy.exported}
+            </small>
+          ) : null}
+        </div>
       </div>
 
       <div style={GRID_STYLE}>
         <UltiGridInsight
-          rowSource={ROW_SOURCE}
+          rowSource={rowSource}
           columnCount={COLUMN_COUNT}
           getColumn={getColumn}
           getColumnWidth={getColumnWidth}
           apiRef={apiRef}
+          selection={selection}
+          onSelectionChange={setSelection}
           frozen={{ top: 0, left: compact ? 1 : 2 }}
           fitColumns="none"
           defaultColumnWidth={132}

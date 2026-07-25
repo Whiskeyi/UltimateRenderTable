@@ -1,4 +1,3 @@
-// @ts-expect-error Vitest runs in Node; the browser package intentionally omits Node typings.
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 

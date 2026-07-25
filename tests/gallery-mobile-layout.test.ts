@@ -1,4 +1,3 @@
-// @ts-expect-error Vitest runs in Node; the browser package intentionally omits Node typings.
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { STUDIO_COMPACT_LAYOUT_QUERY } from '../src/studio/layoutMode'
@@ -144,9 +143,33 @@ describe('gallery mobile layout contract', () => {
     )
   })
 
-  it('keeps the repository overview inside one full-width horizontal snap lane', () => {
+  it('stacks every repository overview card vertically at phone widths', () => {
     expect(demoCss).toMatch(
-      /\.repository-intro__content\s*\{[^}]*grid-auto-columns:\s*minmax\(0, 100%\)[^}]*overflow-x:\s*auto/s,
+      /@media \(max-width: 620px\)[\s\S]*?\.repository-intro\s*\{[^}]*grid-template-rows:\s*auto auto[^}]*overflow-x:\s*hidden[^}]*overflow-y:\s*auto/s,
+    )
+    expect(demoCss).toMatch(
+      /@media \(max-width: 620px\)[\s\S]*?\.repository-intro__content\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\)[^}]*grid-auto-flow:\s*row[^}]*overflow:\s*visible/s,
+    )
+    expect(demoCss).toMatch(
+      /@media \(max-width: 390px\)[\s\S]*?\.repository-intro__architecture\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\)/s,
+    )
+  })
+
+  it('keeps spreadsheet ribbon groups intact and exposes horizontal overflow', () => {
+    expect(demoCss).toMatch(
+      /\.spreadsheet-ribbon-group\s*\{[^}]*min-width:\s*max-content[^}]*flex:\s*0 0 auto/s,
+    )
+    expect(demoCss).toMatch(
+      /\.spreadsheet-ribbon-group > div\s*\{[^}]*min-width:\s*max-content/s,
+    )
+    expect(demoCss).toMatch(
+      /@media \(max-width: 1120px\)[\s\S]*?\.spreadsheet-ribbon\s*\{[^}]*overflow-x:\s*auto[^}]*overscroll-behavior-x:\s*contain[^}]*scroll-padding-inline:\s*7px 28px/s,
+    )
+    expect(demoCss).toMatch(
+      /\.spreadsheet-menu > div\[role='tablist'\]\s*\{[^}]*overflow-x:\s*auto[^}]*scroll-behavior:\s*smooth/s,
+    )
+    expect(demoCss).toMatch(
+      /\.spreadsheet-menu > div\[role='tablist'\] > button\s*\{[^}]*flex:\s*0 0 auto[^}]*scroll-margin-inline:\s*12px/s,
     )
   })
 })

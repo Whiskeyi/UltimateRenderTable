@@ -70,6 +70,57 @@ describe('MergeIndex', () => {
     })
   })
 
+  it('expands long merge chains without repeatedly scanning the enclosed area', () => {
+    const mergeCount = 10_000
+    const regions = Array.from({ length: mergeCount }, (_, index): MergeRegion => ({
+      id: String(index),
+      rowStart: 0,
+      rowEnd: 0,
+      columnStart: index,
+      columnEnd: index + 1,
+    }))
+    const index = new MergeIndex(regions)
+    const startedAt = performance.now()
+
+    expect(index.expandBoundsToIntersectingMerges({
+      rowStart: 0,
+      rowEnd: 0,
+      columnStart: 0,
+      columnEnd: 0,
+    })).toEqual({
+      rowStart: 0,
+      rowEnd: 0,
+      columnStart: 0,
+      columnEnd: mergeCount,
+    })
+
+    // The previous full-bounds rescan was quadratic and took about a second
+    // for this chain. Keep a generous ceiling so slower CI still catches a
+    // return to that algorithm without turning this into a microbenchmark.
+    expect(performance.now() - startedAt).toBeLessThan(750)
+  })
+
+  it('discovers merges entering through newly exposed corner strips', () => {
+    const index = new MergeIndex([
+      { id: 'seed', rowStart: 4, rowEnd: 6, columnStart: 4, columnEnd: 6 },
+      { id: 'top', rowStart: 2, rowEnd: 4, columnStart: 5, columnEnd: 5 },
+      { id: 'corner', rowStart: 2, rowEnd: 2, columnStart: 2, columnEnd: 4 },
+      { id: 'left', rowStart: 3, rowEnd: 3, columnStart: 1, columnEnd: 2 },
+    ])
+
+    expect(index.expandBoundsToIntersectingMerges({
+      rowStart: 5,
+      rowEnd: 5,
+      columnStart: 5,
+      columnEnd: 5,
+    })).toEqual({
+      rowStart: 2,
+      rowEnd: 6,
+      columnStart: 1,
+      columnEnd: 6,
+    })
+  })
+
   it('leaves bounds unchanged when no merged region intersects', () => {
     const index = new MergeIndex([
       { id: 'merge', rowStart: 10, rowEnd: 12, columnStart: 10, columnEnd: 12 },

@@ -44,6 +44,18 @@ export interface ExcelExportOptions<TRow> {
   treeColumnId?: string
   getRowDepth?: (row: TRow, rowIndex: number) => number
   download?: boolean
+  /** Cancels materialization between row batches. Workbook serialization is not interruptible. */
+  signal?: AbortSignal
+  /** Reports cooperative materialization and serialization progress. */
+  onProgress?: (progress: ExcelExportProgress) => void
+  /** Number of rows processed before yielding to the browser. Defaults to 500. */
+  yieldEveryRows?: number
+}
+
+export interface ExcelExportProgress {
+  phase: 'materializing' | 'serializing' | 'complete'
+  completedRows: number
+  totalRows: number
 }
 
 export interface ExcelExportArtifact {
@@ -60,11 +72,15 @@ export interface ExcelExportArtifact {
 export async function createExcelExport<TRow>(
   options: ExcelExportOptions<TRow>,
 ): Promise<ExcelExportArtifact> {
+  const yieldEveryRows = normalizeYieldEveryRows(options.yieldEveryRows)
+  throwIfExportAborted(options.signal)
   const { default: writeExcelFile } = await import('write-excel-file/universal')
   const columns = options.columns.filter((column) => !column.hidden)
   const includeHeader = options.includeHeader !== false
   const rowCount = columns.length === 0 ? 0 : getRowCount(options.rows)
   const matrix: SheetData = []
+  throwIfExportAborted(options.signal)
+  reportProgress(options, 'materializing', 0, rowCount)
 
   if (includeHeader) {
     matrix.push(columns.map((column) => ({
@@ -80,27 +96,36 @@ export async function createExcelExport<TRow>(
     const row = getRow(options.rows, rowIndex)
     if (row === undefined) {
       matrix.push(new Array<Cell>(columns.length).fill(null))
-      continue
-    }
-    const targetRow = new Array<Cell>(columns.length)
-    const depth = getDepth(options, row, rowIndex)
+    } else {
+      const targetRow = new Array<Cell>(columns.length)
+      const depth = getDepth(options, row, rowIndex)
 
-    for (let columnIndex = 0; columnIndex < columns.length; columnIndex += 1) {
-      const column = columns[columnIndex]
-      if (!column) continue
-      const rawValue = column.getValue(row, rowIndex)
-      let exportValue = column.getExportValue
-        ? column.getExportValue(rawValue, row, rowIndex)
-        : rawValue
-      if (column.id === options.treeColumnId && depth > 0 && exportValue != null) {
-        exportValue = `${'  '.repeat(depth)}${String(exportValue)}`
+      for (let columnIndex = 0; columnIndex < columns.length; columnIndex += 1) {
+        const column = columns[columnIndex]
+        if (!column) continue
+        const rawValue = column.getValue(row, rowIndex)
+        let exportValue = column.getExportValue
+          ? column.getExportValue(rawValue, row, rowIndex)
+          : rawValue
+        if (column.id === options.treeColumnId && depth > 0 && exportValue != null) {
+          exportValue = `${'  '.repeat(depth)}${String(exportValue)}`
+        }
+        targetRow[columnIndex] = normalizeExcelValue(exportValue)
       }
-      targetRow[columnIndex] = normalizeExcelValue(exportValue)
+      matrix.push(targetRow)
     }
-    matrix.push(targetRow)
+
+    const completedRows = rowIndex + 1
+    if (completedRows < rowCount && completedRows % yieldEveryRows === 0) {
+      reportProgress(options, 'materializing', completedRows, rowCount)
+      await yieldToBrowser()
+      throwIfExportAborted(options.signal)
+    }
   }
 
   applyMergeSpans(matrix, options.merges, includeHeader)
+  throwIfExportAborted(options.signal)
+  reportProgress(options, 'serializing', rowCount, rowCount)
 
   const workbook = writeExcelFile(matrix, {
     sheet: normalizeSheetName(options.sheetName),
@@ -110,6 +135,8 @@ export async function createExcelExport<TRow>(
     showGridLines: true,
   })
   const blob = await workbook.toBlob()
+  throwIfExportAborted(options.signal)
+  reportProgress(options, 'complete', rowCount, rowCount)
 
   return { blob, workbook, rowCount, columnCount: columns.length }
 }
@@ -208,6 +235,14 @@ function getRowCount<TRow>(source: readonly TRow[] | ExcelRowAccessor<TRow>): nu
   return isRowAccessor(source) ? source.getRowCount() : source.length
 }
 
+function normalizeYieldEveryRows(value: number | undefined): number {
+  if (value === undefined) return 500
+  if (!Number.isSafeInteger(value) || value < 1) {
+    throw new RangeError('yieldEveryRows must be a positive safe integer')
+  }
+  return value
+}
+
 function getRow<TRow>(
   source: readonly TRow[] | ExcelRowAccessor<TRow>,
   index: number,
@@ -240,4 +275,24 @@ function normalizeSheetName(sheetName = 'Table'): string {
 
 function ensureExtension(fileName: string, extension: string): string {
   return fileName.toLocaleLowerCase().endsWith(extension) ? fileName : `${fileName}${extension}`
+}
+
+function reportProgress<TRow>(
+  options: ExcelExportOptions<TRow>,
+  phase: ExcelExportProgress['phase'],
+  completedRows: number,
+  totalRows: number,
+): void {
+  options.onProgress?.({ phase, completedRows, totalRows })
+}
+
+function throwIfExportAborted(signal: AbortSignal | undefined): void {
+  if (!signal?.aborted) return
+  const error = new Error('Excel export was cancelled')
+  error.name = 'AbortError'
+  throw error
+}
+
+function yieldToBrowser(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0))
 }

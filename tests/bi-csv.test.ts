@@ -15,6 +15,12 @@ describe('CSV export', () => {
     expect(serializeCsvValue('safe, "quoted"')).toBe('"safe, ""quoted"""')
   })
 
+  it('serializes dates deterministically across runtimes', () => {
+    expect(serializeCsvValue(new Date('2025-03-08T09:10:11.000Z')))
+      .toBe('2025-03-08T09:10:11.000Z')
+    expect(serializeCsvValue(new Date(Number.NaN))).toBe('Invalid Date')
+  })
+
   it('materializes each wide lazy column once and preserves missing row positions', () => {
     const columnCount = 2_049
     const getColumn = vi.fn((index: number) => index)

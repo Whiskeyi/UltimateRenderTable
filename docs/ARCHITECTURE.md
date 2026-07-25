@@ -27,7 +27,7 @@ Studio 交互层
 
 实现位于 `src/studio`、`src/demo`、`src/bi`、`src/core`；`packages/core` 与 `packages/insight` 只定义发布入口、构建和包元数据。
 
-Studio 有 4 个顶层 Tab：介绍、组件展厅、经营分析和电子表格。介绍页在单屏内交互呈现 Studio、应用层表格与表格渲染底座的边界；组件展厅按生产用例/基础/进阶分组挂载 14 个可交互示例，先以订单履约、年度预算矩阵和移动现场巡检验证组合工作流，再逐项验证底座能力；每项从实际 TSX 文件加载源码并在浏览器中实时编译预览。经营分析负责组合业务维度、树形和同列合并，电子表格负责编辑、公式、粘贴与撤销等应用集成。窄屏下表格舞台保持优先，顶部导航横向滚动并压缩，Props 进入带遮罩、拖拽把手、关闭动作和安全区适配的底部 sheet。默认日常档为 `1K × 40`、行列 overscan `2 / 1`、自动行高关闭，`100K × 100K` 仅作为手动压力预设。
+Studio 有 4 个顶层 Tab：介绍、组件展厅、经营分析和电子表格。介绍页呈现三层边界并提供快速接入、生产用例和包文档入口；组件展厅按生产用例/基础/进阶分组挂载 14 个可交互示例。订单履约支持订单/运单/客户搜索、待处理过滤和选区复制交接；预算矩阵支持 ≥ ¥50K 超支筛选、最大超支定位和复核 CSV；移动现场巡检验证触控选择与复制。其余示例逐项隔离底座能力，每项从实际 TSX 文件加载源码并在浏览器中实时编译预览。经营分析负责组合业务维度、树形和同列合并；电子表格负责编辑、公式、原子粘贴、格式、数据保护与撤销等应用集成。窄屏下表格舞台保持优先，顶部导航横向滚动并压缩，Props 进入带遮罩、拖拽把手、关闭动作和安全区适配的底部 sheet；320–390px 介绍卡片改为纵向堆叠，Spreadsheet Ribbon 分组保持固有宽度并在独立轨道中横向滚动。默认日常档为 `1K × 40`、行列 overscan `2 / 1`、自动行高关闭，`100K × 100K` 仅作为手动压力预设。
 
 实时编辑仅接收当前页面内的本地草稿，不从 URL 或远端存储恢复。模块解析使用 allowlist，但代码仍在 Studio 页面上下文执行，并非安全沙箱；运行时不得自动接入不可信共享源码。
 
@@ -122,7 +122,7 @@ Core 将每个合并区域保存为一条二维矩形，而不是为覆盖的每
 
 跨 pane 的合并区域会被裁剪成 fragment。只有 owner fragment 执行自定义 renderer，其余 fragment 使用静态文本并从可访问性树隐藏，避免重复 effect 和状态分叉。
 
-当前可访问性结构由根级 `grid` / `treegrid`、cell/header 角色与索引、合并跨度、树状态、多选状态和已渲染活动单元格关联组成。pane 内 cell 使用绝对定位，尚不生成 `role=row` / `rowgroup`，因此属于部分 ARIA grid 语义，不代表完整 APG Grid DOM；生产接入仍需用目标读屏器验证。
+当前可访问性结构由根级 `grid` / `treegrid`、视觉隐藏的逻辑 `rowgroup` / `row`、cell/header 角色与索引、合并跨度、树状态、多选状态和已渲染活动单元格关联组成。由于冻结 pane 中的 cell 必须保持独立绝对定位，每个逻辑 row 使用 `aria-owns` 聚合跨 pane 的实际 cell；树的 level/expanded/busy 状态位于 row。Chromium Accessibility Tree 已覆盖该所有权结构，生产接入仍需用目标 NVDA/VoiceOver 版本验证导航与朗读细节。
 
 显式 `mergedCells` 应保持稳定引用、稳定 id 且互不重叠。Core 不为任意重叠矩形定义覆盖优先级。
 
@@ -153,9 +153,11 @@ Core 将每个合并区域保存为一条二维矩形，而不是为覆盖的每
 - `columns`：已物化的异构列数组
 - `columnCount + getColumn(index)`：超宽表惰性列
 
-Insight 维护有界工作集：惰性列最多 2,048 项，行与行元数据各最多 512 项。远端分页、预取、失效和请求取消仍由调用方负责。
+Insight 维护有界 LRU 工作集：惰性列最多 2,048 项，行与行元数据各最多 512 项。`contentVersion` 在 render 期间同步切换行/行元数据缓存 epoch，使稳定 `rowSource` 原地替换数据后第一次读取就不会命中旧对象；它同时向 Core 失效 cell memo 和自动测量，但不会清除用户列宽。远端分页、预取、请求取消，以及何时递增版本仍由调用方负责。
 
 Insight 将 Core viewport 列映射为业务数据列，行号不进入调宽回调。有表头时 `columnResize` 默认启用，可传 `false` 关闭；列级 `resizable`、min/max 与回调均使用业务列语义。
+
+0.2.0 起，`InsightColumn<TRow, TValue>` 的 `TValue` 受 `InsightCellValue` 约束，即 `string | number | boolean | Date | null | undefined`。从 0.1.x 迁移时，object-valued `getValue` 应改为返回参与显示、格式化与导出的 primitive 或 `Date`；自定义 renderer 需要完整对象时从 `context.row` 读取。这样异构列进入 `InsightColumnDefinition<TRow>` 后仍保持统一、可序列化的 cell/export 边界。
 
 ### 树形与同列纵向相邻同值合并
 
@@ -187,13 +189,21 @@ Studio 在经营分析中分别提供树形与同列纵向相邻同值合并开�
         └── content-layer    # 对齐、图片、图标、文本或 React 组件
 ```
 
-两条路径都保留 `.ultigrid-insight-cell` 与 `data-row-id` / `data-column-id` 样式 hook。默认文本单行省略；`wrap` 才允许换行。自定义组件应保持浅 DOM、稳定 Props，并避免同步图片解码或昂贵计算。稳定 getter 背后的数据原地更新时，调用方必须递增 `contentVersion`，同时失效 memoized cell 与自动测量缓存。
+两条路径都保留 `.ultigrid-insight-cell` 与 `data-row-id` / `data-column-id` 样式 hook。默认文本单行省略；`wrap` 才允许换行。自定义组件应保持浅 DOM、稳定 Props，并避免同步图片解码或昂贵计算。稳定 getter 背后的数据原地更新时，调用方必须递增 `contentVersion`，从而同步失效 Insight 行/行元数据 epoch、memoized cell 与自动测量缓存。
 
 ### 导出
 
-Excel 与 CSV 按目标范围逐格物化，时间和峰值内存为 `O(A)`，默认限制 250,000 个单元格；更大导出应按设备内存显式提高 `exportCellLimit`，或交给后端流式生成。Excel 还受单工作表 16,384 列和 1,048,576 行限制。CSV 会一次性物化目标列定义，并默认中和会被电子表格解释为公式的字符串前缀。自定义视图内容通过列的 `exportValue` 提供业务值。
+Excel 与 CSV 按目标范围逐格物化，时间和峰值内存为 `O(A)`，默认限制 250,000 个单元格；更大导出应按设备内存显式提高 `exportCellLimit`，或交给 Worker/后端流式生成。Excel 还受单工作表 16,384 列和 1,048,576 行限制。CSV 会一次性物化目标列定义、在主线程同步生成文本，并默认中和会被电子表格解释为公式的字符串前缀。自定义视图内容通过列的 `exportValue` 提供业务值。
+
+XLSX 物化器默认每 500 行让出一次事件循环。0.2.0 的公开 `UltiGridInsightApi.exportExcel(fileName, range, options)` 第三参数接收 `signal`、`onProgress` 与 `yieldEveryRows`；进度阶段为 `materializing` / `serializing` / `complete`，`AbortSignal` 在批次之间和序列化前后协作式生效。`toBlob()` 序列化本身仍不可中断，因此超大导出仍应限制范围或迁移到 Worker/后端管线。
 
 图片导出捕获当前已布局的 table shell，即虚拟化视口，而不是完整逻辑长表。
+
+### Spreadsheet Demo 会话与数据保护
+
+Spreadsheet 是 Studio 应用集成，不属于 Core/Insight 公共编辑 API。模块内存会在当前页面的顶层场景卸载/重新挂载期间保留最多 50 步 past/future history；`sessionStorage` 只保存当前 worksheet snapshot，用于同标签页刷新恢复，刷新后 past/future 均为空。两者都不是文件保存或服务端同步。卸载、`pagehide` 和 `beforeunload` 会先消费待提交 cell/formula editor；dirty 会话触发浏览器离开确认。语言切换只本地化未被用户编辑的种子 cell。
+
+剪切在系统剪贴板写入成功且源快照未变化后才删除源数据；写入失败时保留源数据，内部剪贴板仍可支持应用内粘贴。粘贴先校验面积、边界与合并冲突，任何越界都会整笔拒绝，不做静默截断；内部复制粘贴会按目标偏移平移相对公式引用，剪切移动则保留原公式引用。合并会在丢弃非锚点值前确认，重置 dirty 工作表也需确认，两者提交后均进入 undo history。当前没有多工作表、持久文件/服务端保存、自动填充手柄或序列填充。
 
 ## 5. 复杂度与内存
 
@@ -244,9 +254,12 @@ Excel 与 CSV 按目标范围逐格物化，时间和峰值内存为 `O(A)`，�
 两个包只支持包根和 `./style.css` 子路径。Insight CSS 自包含 Core CSS。
 
 ```bash
-npm test
-npm run build
-npm run verify:packages
+npm run verify
+npm run test:e2e
 ```
 
-测试与包验证应持续保护坐标转换、窗口边界、合并查询、树形展开、同列纵向相邻同值合并、条件格式、复制上限、声明边界和样式产物。
+`npm run verify` 组合 lint、Vitest、完整构建、gzip 包体预算、包契约和 tarball Vite 消费端；`npm run test:e2e` 构建 Studio 后运行 Chromium 交互测试。CI 对 Pull Request、merge queue 和 `main` push 分别执行 Node 18/20/22 兼容任务、质量/消费端任务与浏览器任务。Pages 只部署成功的 `main` CI 结果。
+
+发布与 CI 解耦：`.github/workflows/publish.yml` 仅接受手动 `workflow_dispatch`，`publish=false` 只验证候选，`publish=true` 才进入受保护 `npm` environment 并取得发布权限。全部目标版本已存在时，发布脚本默认失败，避免空发布被误判成功。
+
+测试与包验证应持续保护坐标转换、窗口边界、合并查询、树形展开、同列纵向相邻同值合并、条件格式、缓存 epoch、复制/导出上限、Spreadsheet 会话与数据保护、320px/Ribbon 布局、声明边界和 tarball/CSS 产物。

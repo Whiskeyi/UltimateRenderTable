@@ -1,4 +1,9 @@
-import { Layers3 } from 'lucide-react'
+import {
+  BookOpen,
+  Layers3,
+  PlayCircle,
+  Rocket,
+} from 'lucide-react'
 import { useState } from 'react'
 import { useI18n } from '../i18n'
 import { GALLERY_EXAMPLE_COUNT } from './galleryExampleTypes'
@@ -7,9 +12,20 @@ type IntroLayer = 'studio' | 'insight' | 'core'
 type CapabilityGroup = 'basic' | 'advanced'
 
 export function RepositoryIntro() {
-  const { t } = useI18n()
+  const { locale, t } = useI18n()
   const [activeLayer, setActiveLayer] = useState<IntroLayer>('studio')
   const [activeCapability, setActiveCapability] = useState<CapabilityGroup>('basic')
+  const ctaCopy = locale === 'zh-CN'
+    ? {
+        quickStart: '快速接入',
+        productionCases: '生产用例',
+        packageDocs: '包文档',
+      }
+    : {
+        quickStart: 'Quick start',
+        productionCases: 'Production cases',
+        packageDocs: 'Package docs',
+      }
   const layers = [
     {
       id: 'studio' as const,
@@ -37,6 +53,9 @@ export function RepositoryIntro() {
   const selectedCapability = activeCapability === 'basic'
     ? t('intro.capabilities.basic')
     : t('intro.capabilities.advanced')
+  const openProductionCases = () => {
+    document.querySelector<HTMLButtonElement>('[data-scenario="gallery"]')?.click()
+  }
 
   return (
     <section className="repository-intro" aria-labelledby="repository-intro-title">
@@ -54,6 +73,30 @@ export function RepositoryIntro() {
             <div><dt>{t('intro.stats.packages')}</dt><dd><Layers3 size={17} /> 3</dd></div>
           </dl>
         </div>
+
+        <nav className="repository-intro__actions" aria-label={locale === 'zh-CN' ? '开始使用 UltiGrid' : 'Get started with UltiGrid'}>
+          <a
+            className="is-primary"
+            href="https://www.npmjs.com/package/@ultigrid/insight"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <Rocket size={14} aria-hidden="true" />
+            {ctaCopy.quickStart}
+          </a>
+          <button type="button" onClick={openProductionCases}>
+            <PlayCircle size={14} aria-hidden="true" />
+            {ctaCopy.productionCases}
+          </button>
+          <a
+            href="https://unpkg.com/@ultigrid/core/README.md"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <BookOpen size={14} aria-hidden="true" />
+            {ctaCopy.packageDocs}
+          </a>
+        </nav>
       </header>
 
       <div className="repository-intro__content">

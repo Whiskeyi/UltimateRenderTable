@@ -7,3 +7,5 @@ dist
 *.local
 coverage
 package-artifacts/
+playwright-report/
+test-results/

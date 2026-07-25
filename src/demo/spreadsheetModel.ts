@@ -79,6 +79,43 @@ export function parseClipboardMatrix(input: string): SpreadsheetCellValue[][] {
   return parseTSV(input).map((row) => row.map(parseCellInput))
 }
 
+/**
+ * Applies spreadsheet copy semantics to A1 references. Relative axes move,
+ * while `$`-prefixed rows or columns remain fixed.
+ */
+export function translateFormulaReferences(
+  value: SpreadsheetCellValue,
+  rowOffset: number,
+  columnOffset: number,
+  rowCount = Number.POSITIVE_INFINITY,
+  columnCount = Number.POSITIVE_INFINITY,
+): SpreadsheetCellValue {
+  if (typeof value !== 'string' || !value.trimStart().startsWith('=')) return value
+  const leadingWhitespace = value.slice(0, value.length - value.trimStart().length)
+  const formula = value.trimStart()
+  let invalidReference = false
+  const translated = formula.replace(
+    /(\$?)([A-Z]+)(\$?)([1-9]\d*)/gi,
+    (reference, columnAbsolute: string, columnLabel: string, rowAbsolute: string, rowLabel: string) => {
+      const parsed = parseCellReference(reference)
+      if (!parsed) return reference
+      const nextRow = parsed.row + (rowAbsolute ? 0 : rowOffset)
+      const nextColumn = parsed.column + (columnAbsolute ? 0 : columnOffset)
+      if (
+        nextRow < 0
+        || nextColumn < 0
+        || nextRow >= rowCount
+        || nextColumn >= columnCount
+      ) {
+        invalidReference = true
+        return '#REF!'
+      }
+      return `${columnAbsolute}${columnName(nextColumn)}${rowAbsolute}${nextRow + 1}`
+    },
+  )
+  return invalidReference ? '#REF!' : leadingWhitespace + translated
+}
+
 export function createSpreadsheetEvaluator(
   values: ReadonlyMap<string, SpreadsheetCellValue>,
   options: SpreadsheetEvaluatorOptions = {},

@@ -167,29 +167,28 @@ export class MergeIndex<T = unknown> {
     const expanded = { ...bounds }
     const matches: MergeRegion<T>[] = []
     const visited = new Set<string>()
-    let changed = true
+    let frontier: GridBounds[] = [{ ...bounds }]
 
-    while (changed) {
-      changed = false
-      this.query(expanded, matches)
-      for (const region of matches) {
-        if (visited.has(region.id)) continue
-        visited.add(region.id)
-        const rowStart = Math.min(expanded.rowStart, region.rowStart)
-        const rowEnd = Math.max(expanded.rowEnd, region.rowEnd)
-        const columnStart = Math.min(expanded.columnStart, region.columnStart)
-        const columnEnd = Math.max(expanded.columnEnd, region.columnEnd)
-        if (
-          rowStart !== expanded.rowStart || rowEnd !== expanded.rowEnd
-          || columnStart !== expanded.columnStart || columnEnd !== expanded.columnEnd
-        ) {
-          expanded.rowStart = rowStart
-          expanded.rowEnd = rowEnd
-          expanded.columnStart = columnStart
-          expanded.columnEnd = columnEnd
-          changed = true
+    while (frontier.length > 0) {
+      const discovered: MergeRegion<T>[] = []
+      for (const frontierBounds of frontier) {
+        this.query(frontierBounds, matches)
+        for (const region of matches) {
+          if (visited.has(region.id)) continue
+          visited.add(region.id)
+          discovered.push(region)
         }
       }
+
+      if (discovered.length === 0) break
+      const previous = { ...expanded }
+      for (const region of discovered) {
+        expanded.rowStart = Math.min(expanded.rowStart, region.rowStart)
+        expanded.rowEnd = Math.max(expanded.rowEnd, region.rowEnd)
+        expanded.columnStart = Math.min(expanded.columnStart, region.columnStart)
+        expanded.columnEnd = Math.max(expanded.columnEnd, region.columnEnd)
+      }
+      frontier = boundsDifference(expanded, previous)
     }
 
     return expanded
@@ -272,6 +271,51 @@ function intersects(a: GridBounds, b: GridBounds): boolean {
     && a.rowEnd >= b.rowStart
     && a.columnStart <= b.columnEnd
     && a.columnEnd >= b.columnStart
+}
+
+/**
+ * Returns a non-overlapping partition of `outer \ inner`.
+ *
+ * Expansion is monotonic, so querying only these newly covered strips keeps a
+ * chained merge walk from rescanning every region already enclosed.
+ */
+function boundsDifference(outer: GridBounds, inner: GridBounds): GridBounds[] {
+  const difference: GridBounds[] = []
+  if (outer.rowStart < inner.rowStart) {
+    difference.push({
+      rowStart: outer.rowStart,
+      rowEnd: inner.rowStart - 1,
+      columnStart: outer.columnStart,
+      columnEnd: outer.columnEnd,
+    })
+  }
+  if (outer.rowEnd > inner.rowEnd) {
+    difference.push({
+      rowStart: inner.rowEnd + 1,
+      rowEnd: outer.rowEnd,
+      columnStart: outer.columnStart,
+      columnEnd: outer.columnEnd,
+    })
+  }
+  const middleRowStart = Math.max(outer.rowStart, inner.rowStart)
+  const middleRowEnd = Math.min(outer.rowEnd, inner.rowEnd)
+  if (outer.columnStart < inner.columnStart && middleRowStart <= middleRowEnd) {
+    difference.push({
+      rowStart: middleRowStart,
+      rowEnd: middleRowEnd,
+      columnStart: outer.columnStart,
+      columnEnd: inner.columnStart - 1,
+    })
+  }
+  if (outer.columnEnd > inner.columnEnd && middleRowStart <= middleRowEnd) {
+    difference.push({
+      rowStart: middleRowStart,
+      rowEnd: middleRowEnd,
+      columnStart: inner.columnEnd + 1,
+      columnEnd: outer.columnEnd,
+    })
+  }
+  return difference
 }
 
 function containsPoint(bounds: GridBounds, row: number, column: number): boolean {

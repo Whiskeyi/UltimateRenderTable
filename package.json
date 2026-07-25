@@ -1,7 +1,7 @@
 {
   "name": "ultigrid-workspace",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "engines": {
     "node": "^18.0.0 || ^20.0.0 || >=22.0.0"
@@ -20,9 +20,15 @@
     "pack:packages": "node scripts/pack-packages.mjs",
     "publish:packages": "node scripts/publish-packages.mjs",
     "verify:packages": "node scripts/verify-packages.mjs",
+    "verify:tarballs": "npm run pack:packages && node scripts/verify-packed-consumer.mjs",
+    "check:size": "node scripts/check-bundle-size.mjs",
     "preview": "vite preview",
+    "lint": "eslint src tests packages --max-warnings 0",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:e2e": "npm run build:demo && npm run test:e2e:built",
+    "test:e2e:built": "playwright test",
+    "verify": "npm run lint && npm test && npm run build && npm run check:size && npm run verify:packages && npm run verify:tarballs"
   },
   "dependencies": {
     "html-to-image": "^1.11.13",
@@ -34,12 +40,21 @@
     "write-excel-file": "^4.1.1"
   },
   "devDependencies": {
+    "@eslint/js": "9.17.0",
+    "@playwright/test": "1.51.1",
+    "@types/node": "22.20.1",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^4.3.4",
+    "eslint": "9.17.0",
+    "eslint-plugin-react-hooks": "5.1.0",
     "fflate": "^0.8.2",
     "typescript": "~5.7.2",
+    "typescript-eslint": "8.18.2",
     "vite": "^6.0.5",
-    "vitest": "^2.1.8"
+    "vitest": "3.2.6"
+  },
+  "overrides": {
+    "glob": "10.5.0"
   }
 }

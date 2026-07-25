@@ -39,7 +39,9 @@ import {
   type StudioPerformanceMetrics,
   type StudioTableConfig,
 } from './studio'
+import { readStudioScenario, writeStudioScenario } from './studio/urlState'
 import { RepositoryIntro } from './demo/RepositoryIntro'
+import { hasDirtySpreadsheetSession } from './demo/spreadsheetSession'
 import {
   createDemoColumnGetter,
   createDemoRowSource,
@@ -93,8 +95,17 @@ class DemoStageErrorBoundary extends Component<
 
 export function App() {
   const { locale, t } = useI18n()
-  const [config, setConfig] = useState<StudioTableConfig>(() => ({ ...DEFAULT_STUDIO_CONFIG }))
+  const [config, setConfig] = useState<StudioTableConfig>(() => ({
+    ...DEFAULT_STUDIO_CONFIG,
+    scenario: typeof window === 'undefined'
+      ? DEFAULT_STUDIO_CONFIG.scenario
+      : readStudioScenario(window.location.search) ?? DEFAULT_STUDIO_CONFIG.scenario,
+  }))
+  const configRef = useRef(config)
   const tableApiRef = useRef<UltiGridInsightApi | null>(null)
+  const [tableApiReady, setTableApiReady] = useState(false)
+  const tableApiReadyRef = useRef(false)
+  const [diagnosticsActive, setDiagnosticsActive] = useState(false)
   const snapshotRef = useRef<InsightViewportSnapshot | null>(null)
   const velocityRef = useRef({
     time: performance.now(),
@@ -106,6 +117,7 @@ export function App() {
   const [metrics, setMetrics] = useState<StudioPerformanceMetrics>({})
   const [toast, setToast] = useState<ToastState | null>(null)
   const toastTimerRef = useRef<number | null>(null)
+  configRef.current = config
 
   const showToast = useCallback((next: ToastState) => {
     setToast(next)
@@ -118,6 +130,30 @@ export function App() {
   }, [])
 
   useEffect(() => {
+    const search = writeStudioScenario(window.location.search, config.scenario)
+    if (search === window.location.search) return
+    window.history.replaceState(
+      window.history.state,
+      '',
+      `${window.location.pathname}${search}${window.location.hash}`,
+    )
+  }, [config.scenario])
+
+  useEffect(() => {
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (!hasDirtySpreadsheetSession()) return
+      event.preventDefault()
+      event.returnValue = ''
+    }
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
+  }, [])
+
+  useEffect(() => {
+    if (!diagnosticsActive) {
+      setMetrics({})
+      return
+    }
     let frame = 0
     let previousFrame = 0
     let lastPublish = performance.now()
@@ -183,10 +219,14 @@ export function App() {
       cancelAnimationFrame(frame)
       document.removeEventListener('visibilitychange', resetSample)
     }
-  }, [])
+  }, [diagnosticsActive])
 
   const handleViewport = useCallback((snapshot: InsightViewportSnapshot) => {
     snapshotRef.current = snapshot
+    if (!tableApiReadyRef.current) {
+      tableApiReadyRef.current = true
+      setTableApiReady(true)
+    }
     const now = performance.now()
     const elapsed = Math.max(1, now - velocityRef.current.time)
     const distance = Math.hypot(
@@ -204,7 +244,11 @@ export function App() {
 
   const handleExport = useCallback(async (format: StudioExportFormat, config: StudioTableConfig) => {
     const api = tableApiRef.current
-    if (!api) return
+    if (!api) {
+      const message = t('app.exportNotReady')
+      showToast({ tone: 'error', message })
+      throw new Error(message)
+    }
     const sampled = config.rowCount > 2_000 || config.columnCount > 128
     const range = sampled
       ? {
@@ -235,6 +279,17 @@ export function App() {
       throw reason
     }
   }, [showToast, t])
+
+  const handleConfigChange = useCallback((next: StudioTableConfig) => {
+    if (next.scenario !== configRef.current.scenario) {
+      tableApiRef.current = null
+      snapshotRef.current = null
+      tableApiReadyRef.current = false
+      setTableApiReady(false)
+    }
+    configRef.current = next
+    setConfig(next)
+  }, [])
 
   const localeText = useMemo<UltiGridInsightLocaleText>(() => ({
     expandRow: t('table.expandRow'),
@@ -303,11 +358,13 @@ export function App() {
     <>
       <Studio
         value={config}
-        onChange={(next) => setConfig(next)}
+        onChange={handleConfigChange}
         metrics={metrics}
         status="ready"
         renderStage={renderStage}
         onExport={(format, config) => handleExport(format, config)}
+        exportReady={tableApiReady}
+        onDiagnosticsOpenChange={setDiagnosticsActive}
         toolbarActions={(
           <a
             className="studio-icon-button demo-github-link"

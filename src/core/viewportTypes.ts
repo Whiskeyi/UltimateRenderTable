@@ -56,6 +56,17 @@ export interface TableCell<TValue = CellPrimitive, TMeta = unknown> {
   meta?: TMeta
 }
 
+export interface RowAriaAttributes {
+  /** Accessible label for the logical row. */
+  ariaLabel?: string
+  /** One-based hierarchy depth for rows in a treegrid. */
+  ariaLevel?: number
+  /** Expansion state for an expandable treegrid row. */
+  ariaExpanded?: boolean
+  /** Marks a logical row whose children or content are still loading. */
+  ariaBusy?: boolean
+}
+
 export type CellSource<TValue, TMeta = unknown> = TValue | TableCell<TValue, TMeta>
 
 export interface CellRenderContext<TValue = CellPrimitive, TMeta = unknown> {
@@ -179,7 +190,18 @@ export interface UltiGridViewportProps<TValue = CellPrimitive, TMeta = unknown> 
   columnCount: number
   getCell: (row: number, column: number) => CellSource<TValue, TMeta>
   getCellText?: (cell: TableCell<TValue, TMeta>, row: number, column: number) => string
+  /**
+   * Supplies semantics for the logical row that owns rendered cells across
+   * frozen panes. Treegrid hierarchy state belongs here rather than on a cell.
+   */
+  getRowAriaAttributes?: (row: number) => RowAriaAttributes | undefined
   renderCell?: CellRenderer<TValue, TMeta>
+  /**
+   * Set to false when renderCell only consumes per-cell selected/active state
+   * and does not read context.range. This lets unaffected visible cells retain
+   * their memoized content while a selection is extended. Defaults to true.
+   */
+  renderCellUsesSelectionRange?: boolean
   getRowHeight?: (row: number) => number | undefined
   getColumnWidth?: (column: number) => number | undefined
   /** Preferred for large sparse custom-size sets; read only when the axis is rebuilt. */

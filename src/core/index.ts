@@ -20,6 +20,7 @@ export type {
   MobileInteractionMode,
   MobileInteractionOptions,
   OverscanOptions,
+  RowAriaAttributes,
   SelectionKind,
   SelectionEndpoints,
   TableCell,

@@ -1,6 +1,6 @@
 {
   "name": "@ultigrid/insight",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "BI-ready application grid built on @ultigrid/core.",
   "license": "MIT",
   "keywords": ["react", "bi", "data-grid", "conditional-formatting", "export"],
@@ -36,7 +36,7 @@
     "./style.css": "./dist/style.css"
   },
   "dependencies": {
-    "@ultigrid/core": "^0.1.0",
+    "@ultigrid/core": "^0.2.0",
     "html-to-image": "^1.11.13",
     "lucide-react": "^0.468.0",
     "write-excel-file": "^4.1.1"

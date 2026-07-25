@@ -44,7 +44,11 @@ import {
   type CompiledConditionalFormatter,
   type ConditionalFormatRule,
 } from './conditionalFormatting.js'
-import { downloadBlob, exportTableToExcel } from './excelExport.js'
+import {
+  downloadBlob,
+  exportTableToExcel,
+  type ExcelExportProgress,
+} from './excelExport.js'
 import { createCsvText, ensureCsvFileName } from './csvExport.js'
 import { exportTableToImage } from './imageExport.js'
 import {
@@ -73,7 +77,10 @@ import type {
   InsightRowId,
 } from './types.js'
 
-export interface InsightColumn<TRow, TValue = InsightCellValue> {
+export interface InsightColumn<
+  TRow,
+  TValue extends InsightCellValue = InsightCellValue,
+> {
   id: string
   header?: ReactNode
   headerText?: string
@@ -97,8 +104,47 @@ export interface InsightColumn<TRow, TValue = InsightCellValue> {
   exportValue?: (value: TValue, row: TRow, rowIndex: number) => InsightCellValue
 }
 
-/** A heterogeneous column slot; each column may keep its own TValue through defineInsightColumn. */
-export type InsightColumnDefinition<TRow> = InsightColumn<TRow, any>
+type InsightColumnValueMembers =
+  | 'getValue'
+  | 'formatValue'
+  | 'visualStyle'
+  | 'image'
+  | 'icon'
+  | 'component'
+  | 'renderContent'
+  | 'conditionalRules'
+  | 'exportValue'
+
+/**
+ * Type-erased heterogeneous column slot.
+ *
+ * TValue-specific callback inputs remain intentionally erased after columns
+ * enter a heterogeneous collection, but getValue is still constrained to the
+ * renderer-supported InsightCellValue union.
+ */
+export type InsightColumnDefinition<TRow> =
+  Omit<InsightColumn<TRow>, InsightColumnValueMembers>
+  & {
+    getValue: (row: TRow, rowIndex: number) => InsightCellValue
+    formatValue?: (value: any, row: TRow, rowIndex: number) => string
+    visualStyle?: InsightCellVisualStyle | ((
+      context: InsightCellContext<TRow, any>,
+    ) => InsightCellVisualStyle)
+    image?: InsightCellImage | ((
+      context: InsightCellContext<TRow, any>,
+    ) => InsightCellImage | undefined)
+    icon?: InsightCellIcon | ((
+      context: InsightCellContext<TRow, any>,
+    ) => InsightCellIcon | undefined)
+    component?: InsightCellComponent<TRow, any>
+    renderContent?: InsightCellRenderFunction<TRow, any>
+    conditionalRules?: readonly ConditionalFormatRule<TRow, any>[]
+    exportValue?: (
+      value: any,
+      row: TRow,
+      rowIndex: number,
+    ) => InsightCellValue
+  }
 
 export type InsightColumnWidthConstraint<TRow> = number | ((
   column: InsightColumnDefinition<TRow>,
@@ -142,9 +188,20 @@ export interface UltiGridInsightApi {
   /** Data cell used for editing and value display while a range is extended. */
   getActiveCell(): CellAddress | null
   focus(): void
-  exportExcel(fileName?: string, range?: InsightExportRange): Promise<void>
+  exportExcel(
+    fileName?: string,
+    range?: InsightExportRange,
+    options?: InsightExcelExportOptions,
+  ): Promise<void>
   exportImage(fileName?: string): Promise<void>
   exportCsv(fileName?: string, range?: InsightExportRange): void
+}
+
+export interface InsightExcelExportOptions {
+  signal?: AbortSignal
+  onProgress?: (progress: ExcelExportProgress) => void
+  /** Number of materialized rows processed before yielding. Defaults to 500. */
+  yieldEveryRows?: number
 }
 
 export interface InsightExportRange {
@@ -274,7 +331,10 @@ export type UltiGridInsightProps<TRow> = UltiGridInsightBaseProps<TRow>
   & InsightRowsProps<TRow>
   & InsightColumnsProps<TRow>
 
-export function defineInsightColumn<TRow, TValue = InsightCellValue>(
+export function defineInsightColumn<
+  TRow,
+  TValue extends InsightCellValue = InsightCellValue,
+>(
   column: InsightColumn<TRow, TValue>,
 ): InsightColumn<TRow, TValue> {
   return column
@@ -312,6 +372,22 @@ interface RowNumberMeta {
 }
 
 type InsightMeta<TRow> = DataMeta<TRow> | HeaderMeta<TRow> | RowNumberMeta
+
+interface AxisSelectionState {
+  readonly corner: boolean
+  readonly rowStart: number
+  readonly rowEnd: number
+  readonly columnStart: number
+  readonly columnEnd: number
+}
+
+const EMPTY_AXIS_SELECTION: AxisSelectionState = Object.freeze({
+  corner: false,
+  rowStart: -1,
+  rowEnd: -1,
+  columnStart: -1,
+  columnEnd: -1,
+})
 
 const BUILTIN_ICONS: Record<string, LucideIcon> = {
   up: TrendingUp,
@@ -435,11 +511,19 @@ export function UltiGridInsight<TRow>(props: UltiGridInsightProps<TRow>) {
     () => new WeakMap<InsightColumn<TRow>, PlainSurfaceStyle>(),
     [columns, getLazyColumn, contentVersion],
   )
-  const rowCache = useMemo(() => new Map<number, TRow>(), [rowModel, rowSource, rows, modelVersion])
+  const rowCache = useMemo(
+    () => new VersionedLruCache<number, TRow>(512, contentVersion),
+    [rowModel, rowSource, rows, modelVersion],
+  )
   const rowMetaCache = useMemo(
-    () => new Map<number, RowMeta>(),
+    () => new VersionedLruCache<number, RowMeta>(512, contentVersion),
     [rowModel, rowSource, modelVersion],
   )
+  // Stable row sources commonly replace data behind the same object identity.
+  // Invalidate synchronously during render so the first cell read for a new
+  // contentVersion cannot observe the previous epoch.
+  rowCache.setVersion(contentVersion)
+  rowMetaCache.setVersion(contentVersion)
 
   useEffect(() => {
     if (!rowModel) return
@@ -482,6 +566,10 @@ export function UltiGridInsight<TRow>(props: UltiGridInsightProps<TRow>) {
     rowCount: dataRowCount,
     columnCount: dataColumnCount,
   })
+  const axisSelection = useMemo(
+    () => resolveAxisSelectionState(dataSelection, dataRowCount, dataColumnCount),
+    [dataSelection, dataRowCount, dataColumnCount],
+  )
   const viewportActiveCell = activeCell === undefined
     ? undefined
     : activeCell
@@ -556,7 +644,6 @@ export function UltiGridInsight<TRow>(props: UltiGridInsightProps<TRow>) {
         : rows?.[index]
     if (row !== undefined) {
       rowCache.set(index, row)
-      trimOldest(rowCache, 512)
     }
     return row
   }, [rowModel, rowSource, rows, rowCache])
@@ -570,7 +657,13 @@ export function UltiGridInsight<TRow>(props: UltiGridInsightProps<TRow>) {
 
   const getColumn = useCallback((index: number) => {
     const existing = columnCache.get(index)
-    if (existing) return existing
+    if (existing) {
+      // Map preserves insertion order; refresh hits so trimOldest behaves as
+      // an LRU boundary instead of evicting frequently-read leading columns.
+      columnCache.delete(index)
+      columnCache.set(index, existing)
+      return existing
+    }
     const column = columns?.[index] ?? getLazyColumn?.(index)
     if (!column) throw new RangeError(`No application column exists at index ${index}`)
     columnCache.set(index, column)
@@ -773,23 +866,29 @@ export function UltiGridInsight<TRow>(props: UltiGridInsightProps<TRow>) {
     const meta = rowModel?.getRowMeta(rowIndex) ?? rowSource?.getRowMeta?.(rowIndex)
     if (meta) {
       rowMetaCache.set(rowIndex, meta)
-      trimOldest(rowMetaCache, 512)
     }
     return meta
   }, [rowModel, rowSource, rowMetaCache])
+
+  const getViewportRowAriaAttributes = useCallback((gridRow: number) => {
+    if (!treeColumnId || (showHeader && gridRow === 0)) return undefined
+    const rowMeta = resolveRowMeta(gridRow - headerOffset)
+    if (!rowMeta) return undefined
+    return {
+      ariaLevel: rowMeta.depth + 1,
+      ariaExpanded: rowMeta.expandable ? rowMeta.expanded : undefined,
+      ariaBusy: rowMeta.loading || undefined,
+    }
+  }, [treeColumnId, showHeader, headerOffset, resolveRowMeta])
 
   const getViewportCell = useCallback((gridRow: number, gridColumn: number) => {
     if (showHeader && gridRow === 0) {
       const dataColumnIndex = gridColumn - rowNumberOffset
       const column = dataColumnIndex >= 0 ? getColumn(dataColumnIndex) : undefined
-      const allRowsSelected = Boolean(dataSelection
-        && dataSelection.rowStart === 0 && dataSelection.rowEnd === dataRowCount - 1)
-      const allColumnsSelected = Boolean(dataSelection
-        && dataSelection.columnStart === 0 && dataSelection.columnEnd === dataColumnCount - 1)
       const axisSelected = showRowNumbers && gridColumn === 0
-        ? allRowsSelected && allColumnsSelected
-        : allRowsSelected && dataSelection !== null
-          && dataColumnIndex >= dataSelection.columnStart && dataColumnIndex <= dataSelection.columnEnd
+        ? axisSelection.corner
+        : dataColumnIndex >= axisSelection.columnStart
+          && dataColumnIndex <= axisSelection.columnEnd
       const meta: HeaderMeta<TRow> = {
         kind: 'header',
         column,
@@ -813,9 +912,8 @@ export function UltiGridInsight<TRow>(props: UltiGridInsightProps<TRow>) {
     const row = getRow(rowIndex)
     if (row === undefined) return { value: '', text: '' }
     if (showRowNumbers && gridColumn === 0) {
-      const axisSelected = Boolean(dataSelection
-        && dataSelection.columnStart === 0 && dataSelection.columnEnd === dataColumnCount - 1
-        && rowIndex >= dataSelection.rowStart && rowIndex <= dataSelection.rowEnd)
+      const axisSelected = rowIndex >= axisSelection.rowStart
+        && rowIndex <= axisSelection.rowEnd
       const meta: RowNumberMeta = { kind: 'rowNumber', rowIndex }
       return {
         value: rowIndex + 1,
@@ -869,8 +967,6 @@ export function UltiGridInsight<TRow>(props: UltiGridInsightProps<TRow>) {
     return {
       value,
       text,
-      ariaLevel: rowMeta ? rowMeta.depth + 1 : undefined,
-      ariaExpanded: rowMeta?.expandable ? rowMeta.expanded : undefined,
       className: [
         'ultigrid-insight-surface',
         plain ? 'ultigrid-insight-surface--plain' : '',
@@ -895,7 +991,7 @@ export function UltiGridInsight<TRow>(props: UltiGridInsightProps<TRow>) {
     activeConditionalRules,
     dataColumnCount,
     dataRowCount,
-    dataSelection,
+    axisSelection,
     plainSurfaceStyleCache,
   ])
 
@@ -1023,6 +1119,7 @@ export function UltiGridInsight<TRow>(props: UltiGridInsightProps<TRow>) {
   const exportExcel = useCallback(async (
     fileName = 'ultigrid',
     requestedRange?: InsightExportRange,
+    taskOptions?: InsightExcelExportOptions,
   ) => {
     const range = normalizeExportRange(requestedRange, dataRowCount, dataColumnCount)
     const exportRowCount = Math.max(0, range.rowEnd - range.rowStart + 1)
@@ -1064,6 +1161,9 @@ export function UltiGridInsight<TRow>(props: UltiGridInsightProps<TRow>) {
         }
       }),
       fileName,
+      signal: taskOptions?.signal,
+      onProgress: taskOptions?.onProgress,
+      yieldEveryRows: taskOptions?.yieldEveryRows,
       treeColumnId,
       merges: effectiveMergedCells.flatMap((merge) => {
         if (
@@ -1196,7 +1296,9 @@ export function UltiGridInsight<TRow>(props: UltiGridInsightProps<TRow>) {
         rowCount={totalRows}
         columnCount={totalColumns}
         getCell={getViewportCell}
+        getRowAriaAttributes={getViewportRowAriaAttributes}
         renderCell={renderInsightCell}
+        renderCellUsesSelectionRange={false}
         defaultRowHeight={defaultRowHeight}
         defaultColumnWidth={defaultColumnWidth}
         rowHeights={effectiveRowHeights}
@@ -1362,6 +1464,26 @@ function defaultIconResolver(icon: InsightCellIcon) {
   return Icon ? <Icon size={icon.size ?? 14} strokeWidth={2} /> : <span>{icon.name}</span>
 }
 
+function resolveAxisSelectionState(
+  range: CellRange | null,
+  rowCount: number,
+  columnCount: number,
+): AxisSelectionState {
+  if (!range) return EMPTY_AXIS_SELECTION
+  const allRows = rowCount > 0 && range.rowStart === 0 && range.rowEnd === rowCount - 1
+  const allColumns = columnCount > 0
+    && range.columnStart === 0
+    && range.columnEnd === columnCount - 1
+  if (!allRows && !allColumns) return EMPTY_AXIS_SELECTION
+  return {
+    corner: allRows && allColumns,
+    rowStart: allColumns ? range.rowStart : -1,
+    rowEnd: allColumns ? range.rowEnd : -1,
+    columnStart: allRows ? range.columnStart : -1,
+    columnEnd: allRows ? range.columnEnd : -1,
+  }
+}
+
 function defaultDisplayValue(value: unknown): string {
   if (value == null) return ''
   if (value instanceof Date) return value.toLocaleString()
@@ -1416,5 +1538,54 @@ function trimOldest<TKey, TValue>(cache: Map<TKey, TValue>, maximum: number): vo
     const oldest = cache.keys().next().value as TKey | undefined
     if (oldest === undefined) return
     cache.delete(oldest)
+  }
+}
+
+/**
+ * Small bounded cache for virtual row data.
+ *
+ * Version changes clear entries before reads, while successful reads refresh
+ * recency. This implementation helper is not re-exported by the package barrel.
+ */
+export class VersionedLruCache<TKey, TValue> {
+  private readonly entries = new Map<TKey, TValue>()
+  private version: unknown
+
+  constructor(
+    private readonly maximum: number,
+    version?: unknown,
+  ) {
+    if (!Number.isSafeInteger(maximum) || maximum < 1) {
+      throw new RangeError(`maximum must be a positive safe integer; received ${maximum}`)
+    }
+    this.version = version
+  }
+
+  get size(): number {
+    return this.entries.size
+  }
+
+  get(key: TKey): TValue | undefined {
+    const value = this.entries.get(key)
+    if (value === undefined && !this.entries.has(key)) return undefined
+    this.entries.delete(key)
+    this.entries.set(key, value as TValue)
+    return value
+  }
+
+  set(key: TKey, value: TValue): void {
+    this.entries.delete(key)
+    this.entries.set(key, value)
+    while (this.entries.size > this.maximum) {
+      const oldest = this.entries.keys().next()
+      if (oldest.done) break
+      this.entries.delete(oldest.value)
+    }
+  }
+
+  setVersion(version: unknown): void {
+    if (Object.is(version, this.version)) return
+    this.version = version
+    this.entries.clear()
   }
 }

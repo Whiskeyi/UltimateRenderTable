@@ -30,7 +30,6 @@ import {
   useCallback,
   useEffect,
   useMemo,
-  useReducer,
   useRef,
   useState,
   type ClipboardEvent as ReactClipboardEvent,
@@ -55,6 +54,7 @@ import {
 import { rangeToTSV, rangesIntersect } from '../core/selection.js'
 import { moveTabAddress } from '../core/keyboardNavigation.js'
 import { translate, type Locale, type MessageKey } from '../i18n'
+import { writeTextToClipboard } from '../utils/clipboard'
 import {
   calculateSelectionStats,
   cellKey,
@@ -65,32 +65,30 @@ import {
   parseClipboardMatrix,
   parseSelectionLabel,
   selectionLabel,
+  translateFormulaReferences,
   type SpreadsheetCellValue,
   type SpreadsheetNumberFormat,
 } from './spreadsheetModel'
+import {
+  initializeWorkbookHistory,
+  localizeWorkbookHistory,
+  persistWorkbookHistory,
+  workbookReducer,
+  type CellFormat,
+  type HorizontalAlign,
+  type WorkbookAction,
+  type WorkbookHistory,
+  type WorksheetSnapshot,
+} from './spreadsheetWorkbook'
 
 interface SheetRow {
   id: number
   index: number
 }
 
-type HorizontalAlign = 'left' | 'center' | 'right'
 type RibbonTab = 'home' | 'formulas' | 'view'
 type EditorNavigation = 'stay' | 'up' | 'down' | 'left' | 'right'
 type FormulaName = 'SUM' | 'AVERAGE' | 'MIN' | 'MAX' | 'COUNT'
-
-interface CellFormat {
-  fontFamily?: string
-  fontSize?: number
-  bold?: boolean
-  italic?: boolean
-  underline?: boolean
-  color?: string
-  fill?: string
-  align?: HorizontalAlign
-  wrap?: boolean
-  numberFormat?: SpreadsheetNumberFormat
-}
 
 interface ResolvedCellFormat {
   fontFamily: string
@@ -105,33 +103,17 @@ interface ResolvedCellFormat {
   numberFormat: SpreadsheetNumberFormat
 }
 
-interface WorksheetSnapshot {
-  values: Map<string, SpreadsheetCellValue>
-  formats: Map<string, CellFormat>
-  mergedCells: MergedCellRange[]
-}
-
-interface WorkbookHistory {
-  past: WorksheetSnapshot[]
-  present: WorksheetSnapshot
-  future: WorksheetSnapshot[]
-  revision: number
-}
-
-type WorkbookAction =
-  | { type: 'commit'; snapshot: WorksheetSnapshot }
-  | { type: 'undo' }
-  | { type: 'redo' }
-
 interface CellEditorState extends CellAddress {
   draft: string
   selectAll: boolean
 }
 
 interface InternalClipboard {
+  mode: 'copy' | 'cut'
   text: string
   values: SpreadsheetCellValue[][]
   formats: (CellFormat | undefined)[][]
+  source: CellAddress
 }
 
 interface HeaderSelectionSession {
@@ -150,7 +132,6 @@ interface SpreadsheetDemoProps {
 
 const ROW_COUNT = 200
 const COLUMN_COUNT = 26
-const HISTORY_LIMIT = 50
 const MAX_PASTE_CELLS = 10_000
 const DEFAULT_SELECTION: CellRange = {
   rowStart: 2,
@@ -186,15 +167,8 @@ export function SpreadsheetDemo({
   localeText,
   onViewportChange,
 }: SpreadsheetDemoProps) {
-  const [history, dispatch] = useReducer(
-    workbookReducer,
-    locale,
-    (initialLocale): WorkbookHistory => ({
-      past: [],
-      present: createInitialSheet(initialLocale),
-      future: [],
-      revision: 0,
-    }),
+  const [history, setHistory] = useState<WorkbookHistory>(
+    () => initializeWorkbookHistory(locale, createInitialSheet),
   )
   const sheet = history.present
   const [selection, setSelection] = useState<CellRange | null>(DEFAULT_SELECTION)
@@ -220,12 +194,27 @@ export function SpreadsheetDemo({
   const [feedback, setFeedback] = useState('')
   const feedbackTimerRef = useRef<number | null>(null)
   const clipboardRef = useRef<InternalClipboard | null>(null)
+  const historyRef = useRef(history)
   const latestSheetRef = useRef(sheet)
   const activeCellRef = useRef(activeCell)
   const editorRef = useRef(editor)
+  const formulaDraftRef = useRef(formulaDraft)
+  const formulaEditingRef = useRef(formulaEditing)
   const headerSelectionRef = useRef<HeaderSelectionSession | null>(null)
+  historyRef.current = history
   latestSheetRef.current = sheet
   activeCellRef.current = activeCell
+  formulaDraftRef.current = formulaDraft
+  formulaEditingRef.current = formulaEditing
+
+  const dispatch = useCallback((action: WorkbookAction) => {
+    const next = workbookReducer(historyRef.current, action)
+    if (next === historyRef.current) return
+    historyRef.current = next
+    latestSheetRef.current = next.present
+    persistWorkbookHistory(next)
+    setHistory(next)
+  }, [])
 
   const evaluator = useMemo(() => createSpreadsheetEvaluator(sheet.values, {
     rowCount: ROW_COUNT,
@@ -247,8 +236,51 @@ export function SpreadsheetDemo({
     if (!nameEditing) setNameDraft(selectionLabel(singleCellRange(activeCell)))
   }, [activeCell, nameEditing])
 
-  useEffect(() => () => {
-    if (feedbackTimerRef.current !== null) window.clearTimeout(feedbackTimerRef.current)
+  useEffect(() => {
+    const next = localizeWorkbookHistory(historyRef.current, locale, createInitialSheet)
+    if (next === historyRef.current) return
+    historyRef.current = next
+    latestSheetRef.current = next.present
+    persistWorkbookHistory(next)
+    setHistory(next)
+  }, [locale])
+
+  useEffect(() => {
+    const persistPendingEdits = () => {
+      const current = historyRef.current
+      let snapshot = consumePendingEditor(current.present, editorRef.current)
+      if (formulaEditingRef.current) {
+        snapshot = applyDraftToSnapshot(
+          snapshot,
+          activeCellRef.current,
+          formulaDraftRef.current,
+        )
+      }
+      const next = snapshot === current.present
+        ? current
+        : workbookReducer(current, { type: 'commit', snapshot })
+      historyRef.current = next
+      latestSheetRef.current = next.present
+      persistWorkbookHistory(next, { immediate: true })
+      return next
+    }
+    const handlePageHide = () => {
+      persistPendingEdits()
+    }
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      const current = persistPendingEdits()
+      if (!current.dirty) return
+      event.preventDefault()
+      event.returnValue = ''
+    }
+    window.addEventListener('pagehide', handlePageHide)
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    return () => {
+      persistPendingEdits()
+      window.removeEventListener('pagehide', handlePageHide)
+      window.removeEventListener('beforeunload', handleBeforeUnload)
+      if (feedbackTimerRef.current !== null) window.clearTimeout(feedbackTimerRef.current)
+    }
   }, [])
 
   useEffect(() => {
@@ -296,7 +328,7 @@ export function SpreadsheetDemo({
   const commitSnapshot = useCallback((snapshot: WorksheetSnapshot) => {
     latestSheetRef.current = snapshot
     dispatch({ type: 'commit', snapshot })
-  }, [])
+  }, [dispatch])
 
   const applyFormat = useCallback((patch: Partial<CellFormat>) => {
     if (!selection) return
@@ -450,9 +482,9 @@ export function SpreadsheetDemo({
     }
     selectRange(next)
     if (focusGrid) restoreGridFocus()
-  }, [locale, nameDraft, notify, restoreGridFocus, selectRange, selection])
+  }, [locale, nameDraft, notify, restoreGridFocus, selectRange])
 
-  const copySelection = useCallback((cut = false) => {
+  const copySelection = useCallback(async (cut = false) => {
     if (!selection) return
     const sourceSelection = { ...selection }
     const currentSheet = consumePendingEditor(latestSheetRef.current, editorRef.current)
@@ -470,13 +502,32 @@ export function SpreadsheetDemo({
       currentSheet.values.get(cellKey(row, column)) ?? ''
     ))
     const formats = rangeToMatrix(sourceSelection, (row, column) => currentSheet.formats.get(cellKey(row, column)))
-    clipboardRef.current = { text, values, formats }
+    const internalClipboard: InternalClipboard = {
+      mode: 'copy',
+      text,
+      values,
+      formats,
+      source: { row: sourceSelection.rowStart, column: sourceSelection.columnStart },
+    }
+    clipboardRef.current = internalClipboard
+    let systemClipboardWritten = false
     try {
-      void navigator.clipboard?.writeText(text).catch(() => undefined)
+      await writeTextToClipboard(text)
+      systemClipboardWritten = true
     } catch {
-      // The internal clipboard still keeps toolbar paste deterministic.
+      // The internal clipboard still makes toolbar paste deterministic.
     }
     if (cut) {
+      if (!systemClipboardWritten) {
+        notify(translate(locale, 'spreadsheet.feedback.cutClipboardFailed'))
+        restoreGridFocus()
+        return
+      }
+      if (latestSheetRef.current !== currentSheet) {
+        notify(translate(locale, 'spreadsheet.feedback.cutChanged'))
+        restoreGridFocus()
+        return
+      }
       editorRef.current = null
       setEditor(null)
       const nextValues = new Map(currentSheet.values)
@@ -486,9 +537,14 @@ export function SpreadsheetDemo({
         nextValues.delete(key)
         nextFormats.delete(key)
       })
+      clipboardRef.current = { ...internalClipboard, mode: 'cut' }
       commitSnapshot({ ...currentSheet, values: nextValues, formats: nextFormats })
     }
-    notify(translate(locale, cut ? 'spreadsheet.feedback.cut' : 'spreadsheet.feedback.copied'))
+    notify(translate(locale, cut
+      ? 'spreadsheet.feedback.cut'
+      : systemClipboardWritten
+        ? 'spreadsheet.feedback.copied'
+        : 'spreadsheet.feedback.copiedInternal'))
     restoreGridFocus()
   }, [commitSnapshot, locale, notify, restoreGridFocus, selection])
 
@@ -496,6 +552,7 @@ export function SpreadsheetDemo({
     matrix: SpreadsheetCellValue[][],
     sourceFormats?: (CellFormat | undefined)[][],
     target: CellAddress = activeCellRef.current,
+    source?: CellAddress,
   ) => {
     const currentSheet = consumePendingEditor(latestSheetRef.current, editorRef.current)
     const matrixWidth = matrix.reduce((maximum, row) => Math.max(maximum, row.length), 0)
@@ -505,8 +562,16 @@ export function SpreadsheetDemo({
       notify(translate(locale, 'spreadsheet.feedback.pasteTooLarge'))
       return
     }
-    const rowEnd = Math.min(ROW_COUNT - 1, target.row + matrix.length - 1)
-    const columnEnd = Math.min(COLUMN_COUNT - 1, target.column + matrixWidth - 1)
+    const rowEnd = target.row + matrix.length - 1
+    const columnEnd = target.column + matrixWidth - 1
+    if (rowEnd >= ROW_COUNT || columnEnd >= COLUMN_COUNT) {
+      notify(translate(locale, 'spreadsheet.feedback.pasteOutOfBounds', {
+        rows: matrix.length,
+        columns: matrixWidth,
+        address: selectionLabel(singleCellRange(target)),
+      }))
+      return
+    }
     const targetRange: CellRange = {
       rowStart: target.row,
       rowEnd,
@@ -533,7 +598,16 @@ export function SpreadsheetDemo({
         const targetColumn = target.column + columnOffset
         if (targetColumn >= COLUMN_COUNT) break
         const key = cellKey(targetRow, targetColumn)
-        const value = sourceRow[columnOffset] ?? ''
+        const sourceValue = sourceRow[columnOffset] ?? ''
+        const value = source
+          ? translateFormulaReferences(
+              sourceValue,
+              target.row - source.row,
+              target.column - source.column,
+              ROW_COUNT,
+              COLUMN_COUNT,
+            )
+          : sourceValue
         if (value === '') nextValues.delete(key)
         else nextValues.set(key, value)
         if (sourceFormats) {
@@ -545,13 +619,20 @@ export function SpreadsheetDemo({
     }
     commitSnapshot({ ...currentSheet, values: nextValues, formats: nextFormats })
     selectRange(targetRange)
-    notify(translate(locale, 'spreadsheet.feedback.pasted'))
+    notify(translate(locale, 'spreadsheet.feedback.pastedCount', { count: cellCount }))
     restoreGridFocus()
   }, [commitSnapshot, locale, notify, restoreGridFocus, selectRange])
 
   const pasteText = useCallback((text: string, target: CellAddress = activeCellRef.current) => {
     const internal = clipboardRef.current
-    if (internal && internal.text === text) pasteMatrix(internal.values, internal.formats, target)
+    if (internal && internal.text === text) {
+      pasteMatrix(
+        internal.values,
+        internal.formats,
+        target,
+        internal.mode === 'copy' ? internal.source : undefined,
+      )
+    }
     else pasteMatrix(parseClipboardMatrix(text), undefined, target)
   }, [pasteMatrix])
 
@@ -589,6 +670,18 @@ export function SpreadsheetDemo({
     }
     if (sheet.mergedCells.some((merge) => rangesIntersect(merge, selection))) {
       notify(translate(locale, 'spreadsheet.feedback.mergeConflict'))
+      return
+    }
+    let discardedValues = 0
+    forEachRangeCell(selection, (row, column) => {
+      if (row === selection.rowStart && column === selection.columnStart) return
+      if ((sheet.values.get(cellKey(row, column)) ?? '') !== '') discardedValues += 1
+    })
+    if (
+      discardedValues > 0
+      && !window.confirm(translate(locale, 'spreadsheet.confirm.merge', { count: discardedValues }))
+    ) {
+      restoreGridFocus()
       return
     }
     const nextValues = new Map(sheet.values)
@@ -648,36 +741,51 @@ export function SpreadsheetDemo({
   }, [activeCell, commitCellInput, getRawValue, locale, notify, restoreGridFocus, selectRange, selection])
 
   const resetSheet = useCallback(() => {
+    if (
+      history.dirty
+      && !window.confirm(translate(locale, 'spreadsheet.confirm.reset'))
+    ) {
+      restoreGridFocus()
+      return
+    }
     const snapshot = createInitialSheet(locale)
     editorRef.current = null
     setEditor(null)
     setFormulaEditing(false)
     setFormulaDraft(String(snapshot.values.get(cellKey(DEFAULT_SELECTION.rowStart, DEFAULT_SELECTION.columnStart)) ?? ''))
-    commitSnapshot(snapshot)
+    latestSheetRef.current = snapshot
+    dispatch({
+      type: 'commit',
+      snapshot,
+      trackValueChanges: false,
+      markDirty: true,
+    })
     selectRange(DEFAULT_SELECTION)
     notify(translate(locale, 'spreadsheet.feedback.reset'))
     restoreGridFocus()
-  }, [commitSnapshot, locale, notify, restoreGridFocus, selectRange])
+  }, [dispatch, history.dirty, locale, notify, restoreGridFocus, selectRange])
 
   const undo = useCallback(() => {
-    if (history.past.length === 0) return
-    latestSheetRef.current = history.past.at(-1)!
+    const previous = historyRef.current.past.at(-1)
+    if (!previous) return
+    latestSheetRef.current = previous
     dispatch({ type: 'undo' })
     editorRef.current = null
     setEditor(null)
     notify(translate(locale, 'spreadsheet.feedback.undo'))
     restoreGridFocus()
-  }, [history.past.length, locale, notify, restoreGridFocus])
+  }, [dispatch, locale, notify, restoreGridFocus])
 
   const redo = useCallback(() => {
-    if (history.future.length === 0) return
-    latestSheetRef.current = history.future[0]!
+    const next = historyRef.current.future[0]
+    if (!next) return
+    latestSheetRef.current = next
     dispatch({ type: 'redo' })
     editorRef.current = null
     setEditor(null)
     notify(translate(locale, 'spreadsheet.feedback.redo'))
     restoreGridFocus()
-  }, [history.future.length, locale, notify, restoreGridFocus])
+  }, [dispatch, locale, notify, restoreGridFocus])
 
   const applyHeaderSelection = useCallback((
     kind: HeaderSelectionSession['kind'],
@@ -925,7 +1033,14 @@ export function SpreadsheetDemo({
   const columns = useMemo<readonly InsightColumnDefinition<SheetRow>[]>(() => (
     Array.from({ length: COLUMN_COUNT }, (_, columnIndex) => defineInsightColumn<SheetRow, SpreadsheetCellValue>({
       id: `column-${columnIndex}`,
-      header: <span className="spreadsheet-column-label">{columnName(columnIndex)}</span>,
+      header: (
+        <span
+          className="spreadsheet-column-label"
+          style={{ fontSize: Math.round(10 * scale) }}
+        >
+          {columnName(columnIndex)}
+        </span>
+      ),
       headerText: columnName(columnIndex),
       width: columnWidths.get(columnIndex) ?? Math.round(96 * scale),
       minWidth: 54,
@@ -939,6 +1054,7 @@ export function SpreadsheetDemo({
         columnIndex,
         getComputedValue(row.index, columnIndex),
         getEffectiveFormat(row.index, columnIndex, sheet.formats.get(cellKey(row.index, columnIndex))),
+        scale,
       ),
       renderContent: ({ row, displayValue, value }) => {
         const rowIndex = row.index
@@ -983,10 +1099,10 @@ export function SpreadsheetDemo({
           return <span className={`spreadsheet-status spreadsheet-status--${statusTone(String(value))}`}>{displayValue}</span>
         }
         if (typeof value === 'string' && value.startsWith('#')) {
-          return <span className="spreadsheet-error-value">{displayValue}</span>
+          return <span className="spreadsheet-error-value" style={{ fontSize: 'inherit' }}>{displayValue}</span>
         }
         if (typeof raw === 'string' && raw.startsWith('=')) {
-          return <span className="spreadsheet-formula-value">{displayValue}</span>
+          return <span className="spreadsheet-formula-value" style={{ fontSize: 'inherit' }}>{displayValue}</span>
         }
         return displayValue
       },
@@ -1031,7 +1147,10 @@ export function SpreadsheetDemo({
           ))}
         </div>
         <span className="spreadsheet-autosave">
-          <i /> {feedback || translate(locale, 'spreadsheet.saved')}
+          <i /> {feedback || translate(
+            locale,
+            history.dirty ? 'spreadsheet.unsaved' : 'spreadsheet.sessionReady',
+          )}
         </span>
         <span className="sr-only" role="status" aria-live="polite">{feedback}</span>
       </header>
@@ -1194,6 +1313,7 @@ export function SpreadsheetDemo({
 
       <div
         className="spreadsheet-grid"
+        style={{ fontSize: Math.round(10 * scale) }}
         onPointerDownCapture={handleGridPointerDown}
         onPointerMoveCapture={handleGridPointerMove}
         onDoubleClick={handleGridDoubleClick}
@@ -1417,38 +1537,6 @@ function ViewToggle({
   )
 }
 
-function workbookReducer(state: WorkbookHistory, action: WorkbookAction): WorkbookHistory {
-  if (action.type === 'commit') {
-    return {
-      past: [...state.past, state.present].slice(-HISTORY_LIMIT),
-      present: action.snapshot,
-      future: [],
-      revision: state.revision + 1,
-    }
-  }
-  if (action.type === 'undo') {
-    const previous = state.past.at(-1)
-    if (!previous) return state
-    return {
-      past: state.past.slice(0, -1),
-      present: previous,
-      future: [state.present, ...state.future].slice(0, HISTORY_LIMIT),
-      revision: state.revision + 1,
-    }
-  }
-  if (action.type === 'redo') {
-    const next = state.future[0]
-    if (!next) return state
-    return {
-      past: [...state.past, state.present].slice(-HISTORY_LIMIT),
-      present: next,
-      future: state.future.slice(1),
-      revision: state.revision + 1,
-    }
-  }
-  return state
-}
-
 function createInitialSheet(locale: Locale): WorksheetSnapshot {
   return {
     values: createInitialValues(locale),
@@ -1457,6 +1545,7 @@ function createInitialSheet(locale: Locale): WorksheetSnapshot {
       { rowStart: 0, rowEnd: 0, columnStart: 0, columnEnd: 7 },
       { rowStart: 16, rowEnd: 16, columnStart: 0, columnEnd: 7 },
     ],
+    editedValueKeys: new Set(),
   }
 }
 
@@ -1467,6 +1556,20 @@ function consumePendingEditor(
   if (!editor) return sheet
   const key = cellKey(editor.row, editor.column)
   const value = parseCellInput(editor.draft)
+  if (Object.is(sheet.values.get(key) ?? '', value)) return sheet
+  const values = new Map(sheet.values)
+  if (value === '') values.delete(key)
+  else values.set(key, value)
+  return { ...sheet, values }
+}
+
+function applyDraftToSnapshot(
+  sheet: WorksheetSnapshot,
+  address: CellAddress,
+  draft: string,
+): WorksheetSnapshot {
+  const key = cellKey(address.row, address.column)
+  const value = parseCellInput(draft)
   if (Object.is(sheet.values.get(key) ?? '', value)) return sheet
   const values = new Map(sheet.values)
   if (value === '') values.delete(key)
@@ -1575,12 +1678,13 @@ function resolveCellStyle(
   column: number,
   value: SpreadsheetCellValue,
   format: ResolvedCellFormat,
+  scale: number,
 ): InsightCellVisualStyle {
   const style: InsightCellVisualStyle = {
     color: format.color,
     backgroundColor: format.fill,
     fontFamily: `${format.fontFamily}, Inter, ui-sans-serif, system-ui, sans-serif`,
-    fontSize: format.fontSize,
+    fontSize: Math.max(8, format.fontSize * scale),
     fontWeight: format.bold ? 700 : undefined,
     fontStyle: format.italic ? 'italic' : undefined,
     textDecoration: format.underline ? 'underline' : undefined,

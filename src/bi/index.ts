@@ -22,6 +22,7 @@ export type {
   InsightMobileInteractionOptions,
   InsightColumnsProps,
   InsightExportRange,
+  InsightExcelExportOptions,
   InsightViewportSnapshot,
   InsightRowsProps,
   UltiGridInsightBaseProps,
@@ -30,6 +31,7 @@ export type {
   UltiGridInsightProps,
   LazyRowSource,
 } from './UltiGridInsight.js'
+export type { ExcelExportProgress } from './excelExport.js'
 export type {
   BackgroundConditionalRule,
   ColorScaleConditionalRule,

@@ -78,6 +78,10 @@ export interface StudioProps<TConfig extends StudioTableConfig = StudioTableConf
   className?: string
   onRetry?: () => void
   onExport?: (format: StudioExportFormat, config: TConfig) => void | Promise<void>
+  /** Disables export while a lazy or remounting table has not exposed its API. */
+  exportReady?: boolean
+  /** Reports whether the diagnostics HUD is actively sampling performance. */
+  onDiagnosticsOpenChange?: (open: boolean) => void
   toolbarActions?: ReactNode
 }
 

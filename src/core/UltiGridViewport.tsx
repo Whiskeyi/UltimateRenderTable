@@ -76,11 +76,14 @@ import {
   type MergedCellRange,
   type SelectionEndpoints,
   type SelectionKind,
+  type RowAriaAttributes,
   type UltiGridViewportApi,
   type UltiGridViewportProps,
   type TableCell,
   type ViewportSnapshot,
 } from './viewportTypes.js'
+
+const useIsomorphicLayoutEffect = typeof window === 'undefined' ? useEffect : useLayoutEffect
 
 interface ElementSize {
   width: number
@@ -178,6 +181,17 @@ interface PaneLayer {
   scrollColumns: boolean
 }
 
+interface A11yOwnedCell {
+  column: number
+  id: string
+}
+
+export interface A11yRowDescriptor extends RowAriaAttributes {
+  row: number
+  id: string
+  owns: string
+}
+
 type SelectionIntent = Pick<SelectionModel, 'anchor' | 'focus' | 'active'>
 
 const EMPTY_INDEX_WINDOW: IndexWindow = {
@@ -203,6 +217,7 @@ interface CellSurfaceProps<TValue, TMeta> {
   selected: boolean
   active: boolean
   range: CellRange | null
+  renderCellUsesSelectionRange: boolean
   contentVersion: string | number | undefined
   rowCount: number
   columnCount: number
@@ -371,7 +386,24 @@ function CellSurfaceImpl<TValue = CellPrimitive, TMeta = unknown>({
   )
 }
 
-const CellSurface = memo(CellSurfaceImpl) as typeof CellSurfaceImpl
+export function areCellSurfacePropsEqual<TValue, TMeta>(
+  previous: CellSurfaceProps<TValue, TMeta>,
+  next: CellSurfaceProps<TValue, TMeta>,
+): boolean {
+  const keys = Object.keys(next) as Array<keyof CellSurfaceProps<TValue, TMeta>>
+  if (Object.keys(previous).length !== keys.length) return false
+  for (const key of keys) {
+    if (
+      key === 'range'
+      && !previous.renderCellUsesSelectionRange
+      && !next.renderCellUsesSelectionRange
+    ) continue
+    if (!Object.is(previous[key], next[key])) return false
+  }
+  return true
+}
+
+const CellSurface = memo(CellSurfaceImpl, areCellSurfacePropsEqual) as typeof CellSurfaceImpl
 
 export function resolveMergedAriaSpan(
   start: number,
@@ -398,6 +430,25 @@ function cellElementId(prefix: string, address: CellAddress): string {
   return `${prefix}-r${address.row}-c${address.column}`
 }
 
+export function buildA11yRowDescriptors(
+  prefix: string,
+  ownedCellsByRow: ReadonlyMap<number, readonly A11yOwnedCell[]>,
+  getRowAriaAttributes?: (row: number) => RowAriaAttributes | undefined,
+): A11yRowDescriptor[] {
+  return [...ownedCellsByRow.entries()]
+    .sort(([left], [right]) => left - right)
+    .map(([row, ownedCells]) => {
+      const orderedCells = [...ownedCells].sort((left, right) => left.column - right.column)
+      const uniqueIds = [...new Set(orderedCells.map(({ id }) => id))]
+      return {
+        row,
+        id: `${prefix}-row-${row}`,
+        owns: uniqueIds.join(' '),
+        ...getRowAriaAttributes?.(row),
+      }
+    })
+}
+
 export function UltiGridViewport<TValue = CellPrimitive, TMeta = unknown>(
   props: UltiGridViewportProps<TValue, TMeta>,
 ) {
@@ -406,7 +457,9 @@ export function UltiGridViewport<TValue = CellPrimitive, TMeta = unknown>(
     columnCount,
     getCell,
     getCellText,
+    getRowAriaAttributes,
     renderCell,
+    renderCellUsesSelectionRange = true,
     defaultRowHeight = 34,
     defaultColumnWidth = 136,
     rowHeights,
@@ -479,6 +532,7 @@ export function UltiGridViewport<TValue = CellPrimitive, TMeta = unknown>(
   const lastScrollRef = useRef({ top: 0, left: 0 })
   const measuredRowsRef = useRef(new Map<number, number>())
   const measuredColumnsRef = useRef(new Map<number, number>())
+  const autoSizeMeasurementRafRef = useRef<number | null>(null)
   const [size, setSize] = useState<ElementSize>({ width: 0, height: 0 })
   const [axisRevision, setAxisRevision] = useState(0)
   const [resizedColumnWidths, setResizedColumnWidths] = useState<ReadonlyMap<number, number>>(
@@ -656,6 +710,10 @@ export function UltiGridViewport<TValue = CellPrimitive, TMeta = unknown>(
       selectableBounds,
     ],
   )
+  const currentSelectionRef = useRef<CellRange | null>(selection)
+  useIsomorphicLayoutEffect(() => {
+    currentSelectionRef.current = selection
+  }, [selection])
   const resolvedControlledActiveCell = useMemo(() => {
     if (!selection || !controlledActiveCell) return null
     const active = clampAddressToRange(controlledActiveCell, selection)
@@ -692,7 +750,6 @@ export function UltiGridViewport<TValue = CellPrimitive, TMeta = unknown>(
       centerHeight: Math.max(0, size.height - topHeight - bottomHeight),
     }
     // axisRevision tracks imperative measurements on the mutable axes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rowAxis, columnAxis, rowCount, columnCount, fixed, size, axisRevision])
 
   const rowOverscan = overscan?.rows ?? 3
@@ -848,6 +905,10 @@ export function UltiGridViewport<TValue = CellPrimitive, TMeta = unknown>(
     rowOverscan,
     syncPaneTransforms,
   ])
+  const syncScrollRef = useRef(syncScroll)
+  useIsomorphicLayoutEffect(() => {
+    syncScrollRef.current = syncScroll
+  }, [syncScroll])
 
   const cancelPendingColumnResize = useCallback(() => {
     const pendingResize = pendingColumnResizeRef.current
@@ -864,9 +925,9 @@ export function UltiGridViewport<TValue = CellPrimitive, TMeta = unknown>(
     if (scrollRafRef.current !== null) return
     scrollRafRef.current = requestAnimationFrame(() => {
       scrollRafRef.current = null
-      syncScroll()
+      syncScrollRef.current()
     })
-  }, [cancelPendingColumnResize, syncScroll])
+  }, [cancelPendingColumnResize])
 
   const stopHorizontalScrollInertia = useCallback(() => {
     if (horizontalScrollInertiaRafRef.current !== null) {
@@ -1036,7 +1097,7 @@ export function UltiGridViewport<TValue = CellPrimitive, TMeta = unknown>(
     stopHorizontalScrollInertia,
   ])
 
-  useLayoutEffect(() => {
+  useIsomorphicLayoutEffect(() => {
     const root = rootRef.current
     const scroller = scrollerRef.current
     if (!root || !scroller) return
@@ -1053,7 +1114,11 @@ export function UltiGridViewport<TValue = CellPrimitive, TMeta = unknown>(
     return () => observer.disconnect()
   }, [])
 
-  useLayoutEffect(() => {
+  useIsomorphicLayoutEffect(() => {
+    if (scrollRafRef.current !== null) {
+      cancelAnimationFrame(scrollRafRef.current)
+      scrollRafRef.current = null
+    }
     syncScroll()
   }, [syncScroll, axisRevision])
 
@@ -1110,6 +1175,7 @@ export function UltiGridViewport<TValue = CellPrimitive, TMeta = unknown>(
       active: stableActive!,
       range: stableRange,
     } : null
+    currentSelectionRef.current = stableRange
     selectionModelRef.current = stableModel
     if (controlledSelection === undefined) setInternalSelection(stableRange)
     onSelectionChange?.(stableRange, kind)
@@ -1127,7 +1193,7 @@ export function UltiGridViewport<TValue = CellPrimitive, TMeta = unknown>(
     selectableBounds,
   ])
 
-  useLayoutEffect(() => {
+  useIsomorphicLayoutEffect(() => {
     if (controlledSelection === undefined || selectionDragActive) return
     const reconciled = reconcileSelectionModel(
       selectionModelRef.current,
@@ -1236,9 +1302,10 @@ export function UltiGridViewport<TValue = CellPrimitive, TMeta = unknown>(
   }, [getCellText])
 
   const copySelection = useCallback(async () => {
-    if (!selection) return ''
+    const currentSelection = selectionModelRef.current?.range ?? currentSelectionRef.current
+    if (!currentSelection) return ''
     const tsv = rangeToTSV(
-      selection,
+      currentSelection,
       ({ row, column }) => {
         const cell = normalizeCell(getCell(row, column))
         return cellText(cell, row, column)
@@ -1246,9 +1313,9 @@ export function UltiGridViewport<TValue = CellPrimitive, TMeta = unknown>(
       { maxCells: copyCellLimit },
     )
     await writeClipboard(tsv)
-    onCopy?.(selection, tsv)
+    onCopy?.(currentSelection, tsv)
     return tsv
-  }, [selection, getCell, cellText, copyCellLimit, onCopy])
+  }, [getCell, cellText, copyCellLimit, onCopy])
 
   const copySelectionFromMobileAction = useCallback(async () => {
     if (copyFeedbackTimerRef.current !== null) {
@@ -1273,20 +1340,32 @@ export function UltiGridViewport<TValue = CellPrimitive, TMeta = unknown>(
     }
   }, [])
 
+  const scrollToCellRef = useRef(scrollToCell)
+  const copySelectionRef = useRef(copySelection)
+  const columnAxisRef = useRef(columnAxis)
+  const columnCountRef = useRef(columnCount)
+  scrollToCellRef.current = scrollToCell
+  copySelectionRef.current = copySelection
+  columnAxisRef.current = columnAxis
+  columnCountRef.current = columnCount
+
   useEffect(() => {
     if (!apiRef) return
     const api: UltiGridViewportApi = {
-      scrollToCell,
-      copySelection,
-      getSelection: () => selection,
-      getActiveCell: () => selectionModelRef.current?.active ?? (selection
-        ? { row: selection.rowStart, column: selection.columnStart }
+      scrollToCell: (address, align) => scrollToCellRef.current(address, align),
+      copySelection: () => copySelectionRef.current(),
+      getSelection: () => selectionModelRef.current?.range ?? currentSelectionRef.current,
+      getActiveCell: () => selectionModelRef.current?.active ?? (currentSelectionRef.current
+        ? {
+            row: currentSelectionRef.current.rowStart,
+            column: currentSelectionRef.current.columnStart,
+          }
         : null),
       getColumnWidth: (viewportColumn) => (
         Number.isSafeInteger(viewportColumn)
         && viewportColumn >= 0
-        && viewportColumn < columnCount
-          ? columnAxis.getSize(viewportColumn)
+        && viewportColumn < columnCountRef.current
+          ? columnAxisRef.current.getSize(viewportColumn)
           : undefined
       ),
       focus: () => rootRef.current?.focus(),
@@ -1295,7 +1374,7 @@ export function UltiGridViewport<TValue = CellPrimitive, TMeta = unknown>(
     return () => {
       if (apiRef.current === api) apiRef.current = null
     }
-  }, [apiRef, scrollToCell, copySelection, selection, columnAxis, columnCount])
+  }, [apiRef])
 
   const storeResizedColumnWidth = useCallback((viewportColumn: number, width: number) => {
     setResizedColumnWidths((current) => {
@@ -1630,7 +1709,7 @@ export function UltiGridViewport<TValue = CellPrimitive, TMeta = unknown>(
     storeResizedColumnWidth,
   ])
 
-  useLayoutEffect(() => {
+  useIsomorphicLayoutEffect(() => {
     const previous = columnResizeResetInputsRef.current
     const next = {
       columnCount,
@@ -1664,7 +1743,7 @@ export function UltiGridViewport<TValue = CellPrimitive, TMeta = unknown>(
     fitColumns,
   ])
 
-  useLayoutEffect(() => {
+  useIsomorphicLayoutEffect(() => {
     if (columnResizeOptions.enabled) return
     cancelPendingColumnResize()
     if (!columnResizeSessionRef.current) return
@@ -1708,19 +1787,20 @@ export function UltiGridViewport<TValue = CellPrimitive, TMeta = unknown>(
     dragPointerIdRef.current = event.pointerId
     dragPointerTypeRef.current = event.pointerType
     dragPointerRef.current = { x: event.clientX, y: event.clientY }
-    if (event.shiftKey && selection) {
+    const currentSelection = selectionModelRef.current?.range ?? currentSelectionRef.current
+    if (event.shiftKey && currentSelection) {
       commitSelection({
         anchor: selectionModelRef.current?.anchor
-          ?? { row: selection.rowStart, column: selection.columnStart },
+          ?? { row: currentSelection.rowStart, column: currentSelection.columnStart },
         focus: address,
         active: selectionModelRef.current?.active
-          ?? { row: selection.rowStart, column: selection.columnStart },
+          ?? { row: currentSelection.rowStart, column: currentSelection.columnStart },
       })
     } else {
       commitSelection({ anchor: address, focus: address, active: address })
     }
     onCellClick?.(address, cell)
-  }, [selection, selectableBounds, commitSelection, onCellClick])
+  }, [selectableBounds, commitSelection, onCellClick])
 
   const commitTouchTap = useCallback((target: TouchTapTarget<TValue, TMeta>) => {
     rootRef.current?.focus({ preventScroll: true })
@@ -1843,7 +1923,7 @@ export function UltiGridViewport<TValue = CellPrimitive, TMeta = unknown>(
     dragAutoScrollRafRef.current = requestAnimationFrame(dragAutoScrollCallbackRef.current)
   }, [mobileOptions.edgeAutoScrollThreshold, updateDragSelection])
 
-  useLayoutEffect(() => {
+  useIsomorphicLayoutEffect(() => {
     dragAutoScrollCallbackRef.current = runDragAutoScroll
   }, [runDragAutoScroll])
 
@@ -2043,7 +2123,7 @@ export function UltiGridViewport<TValue = CellPrimitive, TMeta = unknown>(
   const autoSizeOptions = useMemo(() => normalizeAutoSize(autoSize), [autoSize])
 
   const previousContentVersionRef = useRef(contentVersion)
-  useLayoutEffect(() => {
+  useIsomorphicLayoutEffect(() => {
     const versionChanged = previousContentVersionRef.current !== contentVersion
     previousContentVersionRef.current = contentVersion
     let changed = false
@@ -2093,66 +2173,86 @@ export function UltiGridViewport<TValue = CellPrimitive, TMeta = unknown>(
     stretchBaselineColumnWidths,
   ])
 
-  useLayoutEffect(() => {
-    if (columnResizeSessionRef.current) return
-    if (!autoSizeOptions.columns && !autoSizeOptions.rows) return
-    const viewport = viewportRef.current
-    if (!viewport) return
-    const nodes = viewport.querySelectorAll<HTMLElement>('[data-ultigrid-cell="true"][data-merged="false"]')
-    const columnMaxima = new Map<number, number>()
-    const rowMaxima = new Map<number, number>()
+  const autoSizeUsesSelectionRange = Boolean(renderCell) && renderCellUsesSelectionRange
+  const autoSizeSelectionDependency = autoSizeUsesSelectionRange ? selection : null
+  const autoSizeDragDependency = autoSizeUsesSelectionRange && selectionDragActive
 
-    for (const node of nodes) {
-      const row = Number(node.dataset.row)
-      const column = Number(node.dataset.column)
-      const content = node.querySelector<HTMLElement>('.ultigrid-cell__content') ?? node
-      if (autoSizeOptions.columns && !resizedColumnWidths.has(column)) {
-        const current = measuredColumnsRef.current.get(column)
+  useEffect(() => {
+    if (!autoSizeOptions.columns && !autoSizeOptions.rows) return
+    autoSizeMeasurementRafRef.current = requestAnimationFrame(() => {
+      autoSizeMeasurementRafRef.current = null
+      if (columnResizeSessionRef.current) return
+      const viewport = viewportRef.current
+      if (!viewport) return
+      const nodes = viewport.querySelectorAll<HTMLElement>(
+        '[data-ultigrid-cell="true"][data-merged="false"]',
+      )
+      const columnMaxima = new Map<number, number>()
+      const rowMaxima = new Map<number, number>()
+
+      // Read every visible intrinsic size before mutating either Axis. This
+      // avoids interleaving layout reads and writes for each surface.
+      for (const node of nodes) {
+        const row = Number(node.dataset.row)
+        const column = Number(node.dataset.column)
+        const content = node.querySelector<HTMLElement>('.ultigrid-cell__content') ?? node
+        if (autoSizeOptions.columns && !resizedColumnWidths.has(column)) {
+          const current = measuredColumnsRef.current.get(column)
+            ?? columnAxis.getCustomSize(column)
+            ?? defaultColumnWidth
+          const overflow = Math.max(0, content.scrollWidth - content.clientWidth)
+          const width = clamp(
+            Math.ceil(autoSizeOptions.allowShrink ? measureIntrinsicWidth(content) : current + overflow),
+            autoSizeOptions.minColumnWidth,
+            autoSizeOptions.maxColumnWidth,
+          )
+          columnMaxima.set(column, Math.max(columnMaxima.get(column) ?? 0, width))
+        }
+        if (autoSizeOptions.rows) {
+          const current = measuredRowsRef.current.get(row)
+            ?? rowAxis.getCustomSize(row)
+            ?? defaultRowHeight
+          const overflow = Math.max(0, content.scrollHeight - content.clientHeight)
+          const height = clamp(
+            Math.ceil(autoSizeOptions.allowShrink ? measureIntrinsicHeight(content) : current + overflow),
+            autoSizeOptions.minRowHeight,
+            autoSizeOptions.maxRowHeight,
+          )
+          rowMaxima.set(row, Math.max(rowMaxima.get(row) ?? 0, height))
+        }
+      }
+
+      let changed = false
+      for (const [column, width] of columnMaxima) {
+        const previous = measuredColumnsRef.current.get(column)
           ?? columnAxis.getCustomSize(column)
           ?? defaultColumnWidth
-        const overflow = Math.max(0, content.scrollWidth - content.clientWidth)
-        const width = clamp(
-          Math.ceil(autoSizeOptions.allowShrink ? measureIntrinsicWidth(content) : current + overflow),
-          autoSizeOptions.minColumnWidth,
-          autoSizeOptions.maxColumnWidth,
-        )
-        columnMaxima.set(column, Math.max(columnMaxima.get(column) ?? 0, width))
+        if (width > previous || (autoSizeOptions.allowShrink && width !== previous)) {
+          measuredColumnsRef.current.set(column, width)
+          columnAxis.setSize(column, width)
+          changed = true
+        }
       }
-      if (autoSizeOptions.rows) {
-        const current = measuredRowsRef.current.get(row)
+      for (const [row, height] of rowMaxima) {
+        const previous = measuredRowsRef.current.get(row)
           ?? rowAxis.getCustomSize(row)
           ?? defaultRowHeight
-        const overflow = Math.max(0, content.scrollHeight - content.clientHeight)
-        const height = clamp(
-          Math.ceil(autoSizeOptions.allowShrink ? measureIntrinsicHeight(content) : current + overflow),
-          autoSizeOptions.minRowHeight,
-          autoSizeOptions.maxRowHeight,
-        )
-        rowMaxima.set(row, Math.max(rowMaxima.get(row) ?? 0, height))
+        if (height > previous || (autoSizeOptions.allowShrink && height !== previous)) {
+          measuredRowsRef.current.set(row, height)
+          rowAxis.setSize(row, height)
+          changed = true
+        }
+      }
+      if (changed) setAxisRevision((revision) => revision + 1)
+    })
+    return () => {
+      if (autoSizeMeasurementRafRef.current !== null) {
+        cancelAnimationFrame(autoSizeMeasurementRafRef.current)
+        autoSizeMeasurementRafRef.current = null
       }
     }
-
-    let changed = false
-    for (const [column, width] of columnMaxima) {
-      const previous = measuredColumnsRef.current.get(column) ?? columnAxis.getCustomSize(column) ?? defaultColumnWidth
-      if (width > previous || (autoSizeOptions.allowShrink && width !== previous)) {
-        measuredColumnsRef.current.set(column, width)
-        columnAxis.setSize(column, width)
-        changed = true
-      }
-    }
-    for (const [row, height] of rowMaxima) {
-      const previous = measuredRowsRef.current.get(row) ?? rowAxis.getCustomSize(row) ?? defaultRowHeight
-      if (height > previous || (autoSizeOptions.allowShrink && height !== previous)) {
-        measuredRowsRef.current.set(row, height)
-        rowAxis.setSize(row, height)
-        changed = true
-      }
-    }
-    if (changed) setAxisRevision((revision) => revision + 1)
   }, [
     windowState,
-    selection,
     renderCell,
     getCell,
     getCellText,
@@ -2163,6 +2263,8 @@ export function UltiGridViewport<TValue = CellPrimitive, TMeta = unknown>(
     defaultRowHeight,
     defaultColumnWidth,
     resizedColumnWidths,
+    autoSizeSelectionDependency,
+    autoSizeDragDependency,
   ])
 
   const panes = useMemo(
@@ -2215,6 +2317,13 @@ export function UltiGridViewport<TValue = CellPrimitive, TMeta = unknown>(
   const columnOffsetCache = new Map<number, number>()
   const rowOffset = (index: number) => cachedAxisOffset(rowAxis, rowOffsetCache, index)
   const columnOffset = (index: number) => cachedAxisOffset(columnAxis, columnOffsetCache, index)
+  const a11yOwnedCellsByRow = new Map<number, A11yOwnedCell[]>()
+  const registerA11yCell = (row: number, column: number) => {
+    const ownedCell = { column, id: cellElementId(cellIdPrefix, { row, column }) }
+    const cells = a11yOwnedCellsByRow.get(row)
+    if (cells) cells.push(ownedCell)
+    else a11yOwnedCellsByRow.set(row, [ownedCell])
+  }
 
   const renderPane = (pane: Pane): ReactNode => {
     const merges = mergeFragments.byPane.get(pane.id) ?? []
@@ -2236,6 +2345,7 @@ export function UltiGridViewport<TValue = CellPrimitive, TMeta = unknown>(
         if (covered?.some((merge) => column >= merge.columnStart && column <= merge.columnEnd)) {
           continue
         }
+        registerA11yCell(row, column)
         cells.push(renderSurface(
           pane,
           { rowStart: row, rowEnd: row, columnStart: column, columnEnd: column },
@@ -2245,13 +2355,15 @@ export function UltiGridViewport<TValue = CellPrimitive, TMeta = unknown>(
       }
     }
     for (const merge of merges) {
-        cells.push(renderSurface(
-          pane,
-          merge,
-          true,
-          `merge:${merge.id}`,
-          mergeFragments.ownerByMerge.get(merge.id) === pane.id,
-        ))
+      const ownsMergedContent = mergeFragments.ownerByMerge.get(merge.id) === pane.id
+      if (ownsMergedContent) registerA11yCell(merge.rowStart, merge.columnStart)
+      cells.push(renderSurface(
+        pane,
+        merge,
+        true,
+        `merge:${merge.id}`,
+        ownsMergedContent,
+      ))
     }
 
     return (
@@ -2411,6 +2523,7 @@ export function UltiGridViewport<TValue = CellPrimitive, TMeta = unknown>(
         selected={selected}
         active={active}
         range={renderedSelection}
+        renderCellUsesSelectionRange={Boolean(renderCell) && renderCellUsesSelectionRange}
         contentVersion={contentVersion}
         rowCount={rowCount}
         columnCount={columnCount}
@@ -2454,6 +2567,12 @@ export function UltiGridViewport<TValue = CellPrimitive, TMeta = unknown>(
   const canvasWidth = Math.max(size.width, columnAxis.totalSize)
   const canvasHeight = Math.max(size.height, rowAxis.totalSize)
   const isEmpty = rowCount === 0 || columnCount === 0
+  const renderedPanes = isEmpty ? null : panes.map(renderPane)
+  const a11yRows = buildA11yRowDescriptors(
+    cellIdPrefix,
+    a11yOwnedCellsByRow,
+    getRowAriaAttributes,
+  )
   const mobileCopyLabel = copyFeedback === 'success'
     ? mobileOptions.labels.copySuccess
     : copyFeedback === 'error'
@@ -2478,6 +2597,22 @@ export function UltiGridViewport<TValue = CellPrimitive, TMeta = unknown>(
       data-rendered-rows={renderedRowCount}
       data-rendered-columns={renderedColumnCount}
     >
+      <div className="ultigrid-a11y-rowgroup" role="rowgroup">
+        {a11yRows.map((row) => (
+          <div
+            key={row.id}
+            id={row.id}
+            role="row"
+            aria-rowindex={row.row + 1}
+            aria-owns={row.owns}
+            aria-label={row.ariaLabel}
+            aria-level={row.ariaLevel}
+            aria-expanded={row.ariaExpanded}
+            aria-busy={row.ariaBusy}
+            data-ultigrid-a11y-row={row.row}
+          />
+        ))}
+      </div>
       <div
         ref={scrollerRef}
         className="ultigrid-scroller"
@@ -2495,7 +2630,7 @@ export function UltiGridViewport<TValue = CellPrimitive, TMeta = unknown>(
             className="ultigrid-viewport"
             style={{ width: size.width, height: size.height } as CSSProperties}
           >
-            {isEmpty ? <div className="ultigrid-empty">{emptyContent}</div> : panes.map(renderPane)}
+            {isEmpty ? <div className="ultigrid-empty">{emptyContent}</div> : renderedPanes}
           </div>
         </div>
       </div>

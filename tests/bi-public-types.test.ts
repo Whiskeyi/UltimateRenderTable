@@ -8,7 +8,9 @@ import {
   type InsightColumnDefinition,
   type InsightColumnResizeChange,
   type InsightColumnResizeOptions,
+  type InsightExcelExportOptions,
   type InsightMobileInteractionOptions,
+  type ExcelExportProgress,
   type UltiGridInsightApi,
   type UltiGridInsightProps,
 } from '../src/bi'
@@ -22,6 +24,22 @@ interface Row {
 }
 
 describe('UltiGridInsight public types', () => {
+  function assertInvalidColumnTypes() {
+    // @ts-expect-error Insight render/export contracts do not accept object-valued cells.
+    defineInsightColumn<Row, { nested: string }>({
+      id: 'invalid-object',
+      getValue: () => ({ nested: 'unsupported' }),
+    })
+
+    const invalidDefinition = {
+      id: 'invalid-definition',
+      // @ts-expect-error Heterogeneous column collections retain the supported value boundary.
+      getValue: () => ({ nested: 'unsupported' }),
+    } satisfies InsightColumnDefinition<Row>
+    void invalidDefinition
+  }
+  void assertInvalidColumnTypes
+
   it('uses a bounded client-side export default', () => {
     expect(DEFAULT_EXPORT_CELL_LIMIT).toBe(250_000)
   })
@@ -170,5 +188,21 @@ describe('UltiGridInsight public types', () => {
     expectTypeOf<UltiGridInsightApi['getActiveCell']>()
       .returns.toEqualTypeOf<{ row: number; column: number } | null>()
     expectTypeOf<UltiGridInsightApi['focus']>().returns.toBeVoid()
+  })
+
+  it('exposes cancellable Excel export options through the package API', () => {
+    const onProgress = (progress: ExcelExportProgress) => {
+      expectTypeOf(progress.phase)
+        .toEqualTypeOf<'materializing' | 'serializing' | 'complete'>()
+    }
+    const options = {
+      signal: new AbortController().signal,
+      onProgress,
+      yieldEveryRows: 250,
+    } satisfies InsightExcelExportOptions
+
+    expectTypeOf<Parameters<UltiGridInsightApi['exportExcel']>[2]>()
+      .toEqualTypeOf<InsightExcelExportOptions | undefined>()
+    expect(options.yieldEveryRows).toBe(250)
   })
 })

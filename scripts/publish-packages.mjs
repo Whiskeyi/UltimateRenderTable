@@ -14,9 +14,12 @@ const expectedPackages = [
 
 const args = new Set(process.argv.slice(2))
 for (const arg of args) {
-  if (arg !== '--dry-run') throw new Error(`Unknown option: ${arg}`)
+  if (arg !== '--dry-run' && arg !== '--allow-existing') {
+    throw new Error(`Unknown option: ${arg}`)
+  }
 }
 const dryRun = args.has('--dry-run')
+const allowExisting = args.has('--allow-existing')
 const artifactManifest = JSON.parse(
   await readFile(join(artifactsDirectory, 'manifest.json'), 'utf8'),
 )
@@ -25,6 +28,8 @@ if (artifactManifest.schemaVersion !== 1 || artifactManifest.registry !== regist
 }
 
 const recordsByName = new Map()
+let publishedCount = 0
+let existingCount = 0
 for (const record of artifactManifest.packages ?? []) {
   if (recordsByName.has(record.name)) throw new Error(`Duplicate artifact: ${record.name}`)
   recordsByName.set(record.name, record)
@@ -60,13 +65,25 @@ for (const expected of expectedPackages) {
   const view = runNpm([
     'view',
     spec,
-    'version',
+    'dist.integrity',
     '--json',
     '--registry',
     registry,
   ], root)
   if (view.status === 0) {
-    console.log(`Skipped ${spec}: version already exists on npm`)
+    const publishedIntegrity = parseJsonOutput(view.stdout, spec)
+    if (
+      typeof publishedIntegrity !== 'string'
+      || !record.integrity
+      || publishedIntegrity !== record.integrity
+    ) {
+      throw new Error(
+        `${spec} already exists but its published tarball differs from the release artifact. `
+        + 'Bump this package version before publishing.',
+      )
+    }
+    existingCount += 1
+    console.log(`Skipped ${spec}: identical tarball already exists on npm`)
     continue
   }
   if (!isExplicitE404(view)) {
@@ -87,7 +104,19 @@ for (const expected of expectedPackages) {
   }
   if (published.stdout) process.stdout.write(published.stdout)
   if (published.stderr) process.stderr.write(published.stderr)
+  publishedCount += 1
   console.log(`${dryRun ? 'Dry-run validated' : 'Published'} ${spec}`)
+}
+
+if (
+  publishedCount === 0
+  && existingCount === expectedPackages.length
+  && !allowExisting
+) {
+  throw new Error(
+    'Release produced no packages because every version already exists. '
+    + 'Bump the changed package versions, or pass --allow-existing only when validating a completed release.',
+  )
 }
 
 function runNpm(commandArgs, cwd) {
@@ -114,4 +143,12 @@ function isExplicitE404(result) {
 
 function commandOutput(result) {
   return [result.stderr, result.stdout].filter(Boolean).join('\n').trim()
+}
+
+function parseJsonOutput(output, spec) {
+  try {
+    return JSON.parse(output)
+  } catch {
+    throw new Error(`npm view returned invalid JSON for ${spec}`)
+  }
 }

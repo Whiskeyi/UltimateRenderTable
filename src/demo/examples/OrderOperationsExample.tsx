@@ -7,8 +7,11 @@ import {
   type CSSProperties,
 } from 'react'
 import {
+  CircleAlert,
   ClipboardCopy,
+  Search,
   Signal,
+  X,
 } from 'lucide-react'
 import {
   UltiGridInsight,
@@ -96,6 +99,12 @@ const COPY = {
     cells: '个单元格',
     noSelection: '未选择单元格',
     currentOrder: '当前订单',
+    search: '搜索订单',
+    searchPlaceholder: '订单号、运单号或客户',
+    clearSearch: '清除搜索',
+    focusAttention: '聚焦待处理',
+    results: '条匹配',
+    noResults: '没有匹配的待处理订单',
     copy: '复制选区',
     copied: '已复制',
     copyFailed: '复制失败',
@@ -188,6 +197,12 @@ const COPY = {
     cells: 'cells',
     noSelection: 'No cells selected',
     currentOrder: 'Current order',
+    search: 'Search orders',
+    searchPlaceholder: 'Order, tracking, or customer',
+    clearSearch: 'Clear search',
+    focusAttention: 'Focus attention',
+    results: 'matches',
+    noResults: 'No matching orders need attention',
     copy: 'Copy selection',
     copied: 'Copied',
     copyFailed: 'Copy failed',
@@ -287,7 +302,7 @@ const SHELL_STYLE: CSSProperties = {
   height: '100%',
   minHeight: 0,
   display: 'grid',
-  gridTemplateRows: 'auto minmax(0, 1fr)',
+  gridTemplateRows: 'auto auto minmax(0, 1fr)',
   overflow: 'hidden',
   border: '1px solid #e4e7ec',
   borderRadius: 10,
@@ -320,6 +335,31 @@ const COPY_BUTTON_STYLE: CSSProperties = {
   fontSize: 12,
   fontWeight: 700,
   cursor: 'pointer',
+}
+
+const TASKBAR_STYLE: CSSProperties = {
+  display: 'flex',
+  minWidth: 0,
+  alignItems: 'center',
+  flexWrap: 'wrap',
+  gap: 7,
+  padding: '7px 12px',
+  borderBottom: '1px solid #e4e7ec',
+  background: '#ffffff',
+}
+
+const SEARCH_STYLE: CSSProperties = {
+  minWidth: 140,
+  height: 32,
+  flex: '1 1 220px',
+  padding: '5px 34px 5px 31px',
+  border: '1px solid #d0d5dd',
+  borderRadius: 7,
+  outline: 0,
+  background: '#ffffff',
+  color: '#101828',
+  font: 'inherit',
+  fontSize: 12,
 }
 
 const ORDER_ROW_SOURCE: LazyRowSource<OrderOperationsRow> = {
@@ -395,6 +435,36 @@ function createOrderRow(index: number): OrderOperationsRow {
   }
 }
 
+function requiresAttention(row: OrderOperationsRow): boolean {
+  return row.status === 'exception'
+    || row.paymentStatus === 'review'
+    || row.risk === 'critical'
+    || row.risk === 'blocked'
+}
+
+export function getOrderWorkflowIndexes(
+  query: string,
+  attentionOnly: boolean,
+  customers: readonly string[] = [],
+): number[] | null {
+  const normalizedQuery = query.trim().toLocaleLowerCase()
+  if (!normalizedQuery && !attentionOnly) return null
+
+  const indexes: number[] = []
+  for (let index = 0; index < ROW_COUNT; index += 1) {
+    const row = createOrderRow(index)
+    if (attentionOnly && !requiresAttention(row)) continue
+    if (
+      normalizedQuery
+      && !`${row.orderNumber} ${row.trackingNumber ?? ''} ${customers[row.customerIndex] ?? ''}`
+        .toLocaleLowerCase()
+        .includes(normalizedQuery)
+    ) continue
+    indexes.push(index)
+  }
+  return indexes
+}
+
 function OrderStatusBadge({ value, displayValue }: InsightCellComponentProps<OrderOperationsRow, OrderStatus>) {
   const tone = STATUS_TONES[value]
 
@@ -441,6 +511,8 @@ export default function OrderOperationsExample({ locale, t: _t }: OrderOperation
   })
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle')
   const [currentOrderNumber, setCurrentOrderNumber] = useState<string | null>(null)
+  const [query, setQuery] = useState('')
+  const [attentionOnly, setAttentionOnly] = useState(false)
 
   useEffect(() => {
     const shell = shellRef.current
@@ -676,6 +748,34 @@ export default function OrderOperationsExample({ locale, t: _t }: OrderOperation
     ]
   }, [copy, locale])
 
+  const workflowIndexes = useMemo(
+    () => getOrderWorkflowIndexes(query, attentionOnly, copy.customers),
+    [attentionOnly, copy.customers, query],
+  )
+  const rowSource = useMemo<LazyRowSource<OrderOperationsRow>>(() => {
+    if (workflowIndexes === null) return ORDER_ROW_SOURCE
+    return {
+      rowCount: workflowIndexes.length,
+      getRow: (index) => createOrderRow(workflowIndexes[index]!),
+      getRowId: (row) => row.id,
+    }
+  }, [workflowIndexes])
+
+  useEffect(() => {
+    const visibleRows = rowSource.rowCount
+    setSelection(visibleRows > 0
+      ? {
+          rowStart: 0,
+          rowEnd: Math.min(4, visibleRows - 1),
+          columnStart: 0,
+          columnEnd: 4,
+        }
+      : null)
+    setCurrentOrderNumber(null)
+    setCopyState('idle')
+    if (visibleRows > 0) apiRef.current?.scrollToCell({ row: 0, column: 0 }, 'start')
+  }, [rowSource])
+
   const handleSelectionChange = useCallback((nextSelection: CellRange | null) => {
     setSelection(nextSelection)
     setCopyState('idle')
@@ -737,9 +837,73 @@ export default function OrderOperationsExample({ locale, t: _t }: OrderOperation
           {copyLabel}
         </button>
       </div>
+      <div style={TASKBAR_STYLE} role="search" aria-label={copy.search}>
+        <label style={{ position: 'relative', display: 'flex', minWidth: 140, flex: '1 1 220px' }}>
+          <span className="sr-only">{copy.search}</span>
+          <Search
+            size={14}
+            aria-hidden="true"
+            style={{ position: 'absolute', top: 9, left: 10, color: '#667085', pointerEvents: 'none' }}
+          />
+          <input
+            type="search"
+            value={query}
+            placeholder={copy.searchPlaceholder}
+            onChange={(event) => setQuery(event.currentTarget.value)}
+            style={SEARCH_STYLE}
+          />
+          {query ? (
+            <button
+              type="button"
+              aria-label={copy.clearSearch}
+              title={copy.clearSearch}
+              onClick={() => setQuery('')}
+              style={{
+                position: 'absolute',
+                top: 3,
+                right: 3,
+                display: 'grid',
+                width: 26,
+                height: 26,
+                padding: 0,
+                placeItems: 'center',
+                color: '#667085',
+                border: 0,
+                borderRadius: 5,
+                background: 'transparent',
+                cursor: 'pointer',
+              }}
+            >
+              <X size={13} aria-hidden="true" />
+            </button>
+          ) : null}
+        </label>
+        <button
+          type="button"
+          aria-pressed={attentionOnly}
+          onClick={() => setAttentionOnly((current) => !current)}
+          style={{
+            ...COPY_BUTTON_STYLE,
+            color: attentionOnly ? '#b42318' : '#475467',
+            borderColor: attentionOnly ? '#f4b8b2' : '#d0d5dd',
+            background: attentionOnly ? '#fff1f0' : '#fff',
+          }}
+        >
+          <CircleAlert size={14} aria-hidden="true" />
+          {copy.focusAttention}
+        </button>
+        <small
+          aria-live="polite"
+          style={{ marginLeft: 'auto', color: rowSource.rowCount ? '#667085' : '#b42318', fontSize: 11 }}
+        >
+          {rowSource.rowCount
+            ? `${new Intl.NumberFormat(locale).format(rowSource.rowCount)} ${copy.results}`
+            : copy.noResults}
+        </small>
+      </div>
       <div style={{ minHeight: 0, overflow: 'hidden' }}>
         <UltiGridInsight
-          rowSource={ORDER_ROW_SOURCE}
+          rowSource={rowSource}
           columns={columns}
           apiRef={apiRef}
           selection={selection}

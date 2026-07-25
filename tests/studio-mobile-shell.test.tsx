@@ -56,6 +56,23 @@ describe('Studio mobile shell', () => {
     expect(markup).not.toContain('data-testid="studio-inspector"')
   })
 
+  it('makes lazy-table export readiness explicit', () => {
+    const markup = renderToStaticMarkup(
+      <I18nProvider>
+        <Studio
+          defaultValue={{ scenario: 'analysis' }}
+          onExport={() => undefined}
+          exportReady={false}
+        />
+      </I18nProvider>,
+    )
+
+    expect(markup).toMatch(
+      /data-testid="studio-export-trigger"[^>]*aria-label="表格加载中，导出暂不可用"[^>]*disabled=""/,
+    )
+    expect(markup).toContain('表格加载中，导出暂不可用')
+  })
+
   it('renders a functional spreadsheet ribbon and editable name box', () => {
     const markup = renderToStaticMarkup(
       <SpreadsheetDemo

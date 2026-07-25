@@ -12,5 +12,5 @@
     "noEmit": true,
     "strict": true
   },
-  "include": ["vite.config.ts", "packages/*/vite.config.ts"]
+  "include": ["vite.config.ts", "playwright.config.ts", "packages/*/vite.config.ts"]
 }
