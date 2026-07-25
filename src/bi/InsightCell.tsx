@@ -112,7 +112,7 @@ function InsightCellImpl<TRow = unknown, TValue = InsightCellValue>({
       data-column-id={columnId}
       className={rootClassName}
       style={rootStyle}
-      title={title ?? (visualStyle?.wrap ? undefined : displayValue)}
+      title={title ?? displayValue}
       onClick={disabled ? undefined : onClick}
       onDoubleClick={disabled ? undefined : onDoubleClick}
     >

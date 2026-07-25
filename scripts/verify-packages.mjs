@@ -4,11 +4,15 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const root = fileURLToPath(new URL('..', import.meta.url))
+const rootManifest = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))
 const packageNames = ['core', 'insight']
 
 for (const packageName of packageNames) {
   const packageRoot = join(root, 'packages', packageName)
   const manifest = JSON.parse(readFileSync(join(packageRoot, 'package.json'), 'utf8'))
+  if (manifest.engines?.node !== rootManifest.engines?.node) {
+    throw new Error(`${manifest.name}: Node engine must match the workspace contract`)
+  }
   const requiredFiles = [
     manifest.exports['.'].import,
     manifest.exports['.'].types,

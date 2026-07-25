@@ -105,7 +105,7 @@ export class FlatRowModel<TRow> implements InsightRowModel<TRow> {
   }
 
   private emit(change: RowModelChange): void {
-    this.listeners.forEach((listener) => listener(change))
+    emitRowModelChange(this.listeners, change)
   }
 }
 
@@ -145,10 +145,11 @@ export class TreeRowModel<TRow> implements InsightRowModel<TRow> {
   version = 0
 
   private readonly options: TreeRowModelOptions<TRow>
-  private readonly nodesById = new Map<InsightRowId, TreeNode<TRow>>()
+  private nodesById = new Map<InsightRowId, TreeNode<TRow>>()
   private readonly listeners = new Set<RowModelListener>()
   private roots: TreeNode<TRow>[] = []
   private visible: TreeNode<TRow>[] = []
+  private generation = 0
 
   constructor(rows: readonly TRow[], options: TreeRowModelOptions<TRow>) {
     this.options = options
@@ -195,14 +196,24 @@ export class TreeRowModel<TRow> implements InsightRowModel<TRow> {
 
   async expand(id: InsightRowId): Promise<boolean> {
     const node = this.nodesById.get(id)
-    if (!node || !node.expandable) return false
+    if (!node || !node.expandable || this.visible.indexOf(node) < 0) return false
     if (node.expanded && node.childState === 'loaded') return true
 
     node.expanded = true
     this.bump({ type: 'expand', rowId: id, index: this.visible.indexOf(node) })
+    if (
+      this.nodesById.get(id) !== node
+      || !node.expanded
+      || this.visible.indexOf(node) < 0
+    ) return false
 
     if (node.childState !== 'loaded') await this.ensureChildren(node)
-    if (!node.expanded || node.childState !== 'loaded') return false
+    if (
+      this.nodesById.get(id) !== node
+      || !node.expanded
+      || node.childState !== 'loaded'
+      || this.visible.indexOf(node) < 0
+    ) return false
 
     const nodeIndex = this.visible.indexOf(node)
     if (nodeIndex < 0 || this.visible[nodeIndex + 1]?.parent === node) return true
@@ -212,13 +223,20 @@ export class TreeRowModel<TRow> implements InsightRowModel<TRow> {
     insertItems(this.visible, nodeIndex + 1, additions)
     if (additions.length > 0) {
       this.bump({ type: 'expand', rowId: id, index: nodeIndex + 1, count: additions.length })
+      if (
+        this.nodesById.get(id) !== node
+        || !node.expanded
+        || this.visible.indexOf(node) < 0
+      ) return false
       // A default-expanded child starts its own lazy load only after becoming visible.
       for (let index = 0; index < additions.length; index += 1) {
         const child = additions[index]
         if (child?.expanded && child.childState !== 'loaded') void this.expand(child.id)
       }
     }
-    return true
+    return this.nodesById.get(id) === node
+      && node.expanded
+      && this.visible.indexOf(node) >= 0
   }
 
   collapse(id: InsightRowId): boolean {
@@ -255,9 +273,13 @@ export class TreeRowModel<TRow> implements InsightRowModel<TRow> {
   }
 
   private reset(rows: readonly TRow[], notify: boolean): void {
-    this.nodesById.clear()
-    this.roots = this.materialize(rows, undefined)
-    this.visible = this.roots.slice()
+    const nextNodesById = new Map<InsightRowId, TreeNode<TRow>>()
+    const nextRoots = this.materialize(rows, undefined, nextNodesById)
+
+    this.generation += 1
+    this.nodesById = nextNodesById
+    this.roots = nextRoots
+    this.visible = nextRoots.slice()
 
     if (notify) {
       this.version += 1
@@ -274,18 +296,28 @@ export class TreeRowModel<TRow> implements InsightRowModel<TRow> {
   private materialize(
     rows: readonly TRow[],
     parent: TreeNode<TRow> | undefined,
+    registry = this.nodesById,
   ): TreeNode<TRow>[] {
     const nodes = new Array<TreeNode<TRow>>(rows.length)
+    const ids = new Array<InsightRowId | undefined>(rows.length)
+    const batchIds = new Set<InsightRowId>()
     const depth = parent ? parent.depth + 1 : 0
 
     for (let index = 0; index < rows.length; index += 1) {
       const row = rows[index]
       if (row === undefined) continue
       const id = this.options.getRowId(row)
-      if (this.nodesById.has(id)) {
+      if (registry.has(id) || batchIds.has(id)) {
         throw new Error(`Tree row id must be unique: ${String(id)}`)
       }
+      ids[index] = id
+      batchIds.add(id)
+    }
 
+    for (let index = 0; index < rows.length; index += 1) {
+      const row = rows[index]
+      const id = ids[index]
+      if (row === undefined || id === undefined) continue
       const expandable = this.options.hasChildren
         ? this.options.hasChildren(row)
         : Boolean(this.options.getChildren || this.options.loadChildren)
@@ -302,7 +334,10 @@ export class TreeRowModel<TRow> implements InsightRowModel<TRow> {
         error: undefined,
       }
       nodes[index] = node
-      this.nodesById.set(id, node)
+    }
+    for (let index = 0; index < nodes.length; index += 1) {
+      const node = nodes[index]
+      if (node) registry.set(node.id, node)
     }
     return nodes
   }
@@ -310,11 +345,38 @@ export class TreeRowModel<TRow> implements InsightRowModel<TRow> {
   private async ensureChildren(node: TreeNode<TRow>): Promise<void> {
     if (node.childState === 'loaded') return
     if (node.loadingPromise) return node.loadingPromise
+    const generation = this.generation
+    const isCurrent = () => (
+      this.generation === generation && this.nodesById.get(node.id) === node
+    )
+    if (!isCurrent()) return
+    const fail = (error: unknown) => {
+      if (!isCurrent()) return
+      node.childState = 'error'
+      node.error = error
+      node.expanded = false
+      this.bump({ type: 'error', rowId: node.id })
+    }
 
-    const synchronous = this.options.getChildren?.(node.row)
+    let synchronous: readonly TRow[] | undefined
+    try {
+      synchronous = this.options.getChildren?.(node.row)
+    } catch (error) {
+      fail(error)
+      return
+    }
     if (synchronous !== undefined) {
-      node.children = this.materialize(synchronous, node)
+      if (!isCurrent()) return
+      try {
+        const children = this.materialize(synchronous, node)
+        if (!isCurrent()) return
+        node.children = children
+      } catch (error) {
+        fail(error)
+        return
+      }
       node.childState = 'loaded'
+      node.error = undefined
       node.expandable = node.children.length > 0
       if (!node.expandable) node.expanded = false
       this.bump({ type: 'loaded', rowId: node.id, count: node.children.length })
@@ -324,6 +386,7 @@ export class TreeRowModel<TRow> implements InsightRowModel<TRow> {
     if (!this.options.loadChildren) {
       node.children = []
       node.childState = 'loaded'
+      node.error = undefined
       node.expandable = false
       node.expanded = false
       this.bump({ type: 'loaded', rowId: node.id, count: 0 })
@@ -333,20 +396,33 @@ export class TreeRowModel<TRow> implements InsightRowModel<TRow> {
     node.childState = 'loading'
     node.error = undefined
     this.bump({ type: 'loading', rowId: node.id })
+    if (!isCurrent() || !node.expanded) {
+      if (isCurrent()) node.childState = 'unloaded'
+      return
+    }
 
-    const pending = this.options
-      .loadChildren(node.row)
+    let loadResult: Promise<readonly TRow[]>
+    try {
+      loadResult = this.options.loadChildren(node.row)
+    } catch (error) {
+      fail(error)
+      return
+    }
+
+    const pending = Promise.resolve(loadResult)
       .then((rows) => {
-        node.children = this.materialize(rows, node)
+        if (!isCurrent()) return
+        const children = this.materialize(rows, node)
+        if (!isCurrent()) return
+        node.children = children
         node.childState = 'loaded'
+        node.error = undefined
         node.expandable = node.children.length > 0
         if (!node.expandable) node.expanded = false
         this.bump({ type: 'loaded', rowId: node.id, count: node.children.length })
       })
       .catch((error: unknown) => {
-        node.childState = 'error'
-        node.error = error
-        this.bump({ type: 'error', rowId: node.id })
+        fail(error)
       })
       .finally(() => {
         node.loadingPromise = undefined
@@ -388,7 +464,7 @@ export class TreeRowModel<TRow> implements InsightRowModel<TRow> {
   }
 
   private emit(change: RowModelChange): void {
-    this.listeners.forEach((listener) => listener(change))
+    emitRowModelChange(this.listeners, change)
   }
 }
 
@@ -424,4 +500,36 @@ function removeItems<T>(target: T[], at: number, count: number): void {
     target[index - count] = target[index] as T
   }
   target.length = Math.max(at, target.length - count)
+}
+
+function emitRowModelChange(
+  listeners: ReadonlySet<RowModelListener>,
+  change: RowModelChange,
+): void {
+  for (const listener of Array.from(listeners)) {
+    try {
+      listener(change)
+    } catch (error) {
+      reportRowModelListenerError(error)
+    }
+  }
+}
+
+function reportRowModelListenerError(error: unknown): void {
+  const reporter = (globalThis as typeof globalThis & {
+    reportError?: (reason: unknown) => void
+  }).reportError
+  if (typeof reporter === 'function') {
+    try {
+      reporter(error)
+      return
+    } catch {
+      // Fall through to the broadly supported diagnostic path.
+    }
+  }
+  try {
+    console.error('UltiGrid row-model listener failed', error)
+  } catch {
+    // A host diagnostic hook must not be able to corrupt the row model.
+  }
 }

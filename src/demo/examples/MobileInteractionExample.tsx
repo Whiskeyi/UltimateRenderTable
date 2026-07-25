@@ -75,7 +75,7 @@ export default function MobileInteractionExample({ t }: GalleryExampleProps) {
 
     const progress = (row * 17 + column * 11) % 101
     const values = [
-      t('gallery.mobile.item', { index: row }),
+      t('gallery.mobile.item', { index: String(row).padStart(5, '0') }),
       t('gallery.mobile.owner', { index: (row % 7) + 1 }),
       `${progress}%`,
       progress >= 76

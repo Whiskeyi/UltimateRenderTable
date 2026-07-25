@@ -49,6 +49,45 @@ describe('MergeIndex', () => {
     expect(new Set(result.map((region) => region.id))).toEqual(new Set(['3:4', '3:5', '4:4', '4:5']))
   })
 
+  it('recursively expands bounds through chained merged regions', () => {
+    const index = new MergeIndex([
+      { id: 'a', rowStart: 0, rowEnd: 0, columnStart: 0, columnEnd: 4 },
+      { id: 'b', rowStart: 5, rowEnd: 6, columnStart: 4, columnEnd: 7 },
+      { id: 'c', rowStart: 2, rowEnd: 3, columnStart: 7, columnEnd: 9 },
+      { id: 'unrelated', rowStart: 20, rowEnd: 21, columnStart: 20, columnEnd: 21 },
+    ])
+
+    expect(index.expandBoundsToIntersectingMerges({
+      rowStart: 0,
+      rowEnd: 5,
+      columnStart: 0,
+      columnEnd: 0,
+    })).toEqual({
+      rowStart: 0,
+      rowEnd: 6,
+      columnStart: 0,
+      columnEnd: 9,
+    })
+  })
+
+  it('leaves bounds unchanged when no merged region intersects', () => {
+    const index = new MergeIndex([
+      { id: 'merge', rowStart: 10, rowEnd: 12, columnStart: 10, columnEnd: 12 },
+    ])
+
+    expect(index.expandBoundsToIntersectingMerges({
+      rowStart: 1,
+      rowEnd: 3,
+      columnStart: 2,
+      columnEnd: 4,
+    })).toEqual({
+      rowStart: 1,
+      rowEnd: 3,
+      columnStart: 2,
+      columnEnd: 4,
+    })
+  })
+
   it('rebuilds lazily after set/remove and reuses query output', () => {
     const index = new MergeIndex()
     index.set({ id: 'a', rowStart: 0, rowEnd: 2, columnStart: 0, columnEnd: 2 })

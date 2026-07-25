@@ -77,7 +77,7 @@ Install `@ultigrid/core` when you only need the coordinate protocol and direct c
 | Interaction | Click/drag selection, edge auto-scroll, Shift and keyboard navigation; direction-locked mobile scrolling, tap selection, drag-handle extension, and a floating mobile copy action |
 | Data models | Row arrays, `LazyRowSource`, `FlatRowModel`, `TreeRowModel`, materialized columns, and lazy `columnCount + getColumn` columns |
 | Conditional formatting | Text, background, icons, two/three-color scales, signed data bars, priority, `stopIfTrue` |
-| Output and integration | `scrollToCell`, imperative selection/copy APIs, Excel, CSV, current-viewport PNG, data-coordinate callbacks, `localeText`, ARIA grid/treegrid |
+| Output and integration | `scrollToCell`, imperative selection/copy APIs, Excel, CSV, current-viewport PNG, data-coordinate callbacks, `localeText`, and partial ARIA grid/treegrid semantics; row/rowgroup structure is not implemented yet |
 
 See [Capability status](docs/CAPABILITIES.md) for detailed boundaries.
 
@@ -132,13 +132,13 @@ Studio defaults to the Everyday preset: `1K × 40`, row/column overscan `2 / 1`,
 | Tab | Content |
 | --- | --- |
 | Overview | Presents Studio, the application grid, and the grid rendering foundation, plus their boundaries and capability summary, without occupying a grid demo |
-| Component gallery | Groups 12 interactive examples into Basic and Advanced; each edits the TSX file that implements the Demo and refreshes its preview live, covering lazy rows/columns, multi-level trees, mobile touch, imperative APIs, and Excel/CSV/PNG export |
+| Component gallery | Groups 14 interactive examples into Production, Basic, and Advanced. Order fulfillment, an annual budget matrix, and mobile field inspection validate composed workflows first; the remaining examples isolate lazy rows/columns, trees, imperative APIs, and Excel/CSV/PNG export. Every item edits its real TSX and refreshes live. |
 | Business analytics | Composite dimensions and metrics; roots and branches both expand across at least depths 0/1/2; same-column merging is independent and splits at sibling boundaries |
-| Conditional formatting | Combined text, background, icon, color-scale, and data-bar rules |
+| Spreadsheet | Demonstrates editing, formulas, paste, fill, and undo/redo as an application integration built on the grid foundation |
 
 The gallery editor reads the same `.tsx` file as the default preview through `?raw`, then recompiles edits with a 220ms debounce. Its runtime resolves only `react`, `lucide-react`, `@ultigrid/core`, and `@ultigrid/insight`; drafts remain in the current page.
 
-On narrow screens, Studio keeps the grid stage primary, compresses the top navigation into a horizontal scroller, and moves Props into a safe-area-aware bottom sheet with a backdrop and drag handle. Mobile touch interaction is an Advanced gallery capability backed by real editable source.
+On narrow screens, Studio keeps the grid stage primary, compresses the top navigation into a horizontal scroller, and moves Props into a safe-area-aware bottom sheet with a backdrop and drag handle. Mobile field inspection is a Production gallery case backed by real editable source.
 
 This editor is a local Demo tool, not a security sandbox. Do not automatically load or execute untrusted source from URLs, remote storage, or third-party shares.
 

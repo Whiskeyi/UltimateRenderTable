@@ -5,8 +5,9 @@ import { Studio } from '../src/studio'
 import { DEFAULT_STUDIO_CONFIG } from '../src/studio/types'
 
 describe('Studio everyday performance defaults', () => {
-  it('starts with a bounded everyday viewport workload', () => {
+  it('keeps bounded table defaults while opening on the introduction', () => {
     expect(DEFAULT_STUDIO_CONFIG).toMatchObject({
+      scenario: 'intro',
       rowCount: 1_000,
       columnCount: 40,
       overscanRows: 2,
@@ -19,7 +20,15 @@ describe('Studio everyday performance defaults', () => {
         <Studio />
       </I18nProvider>,
     )
+    expect(markup).toContain('data-scenario="intro" class="is-active" aria-pressed="true"')
 
-    expect(markup).toContain('<option value="everyday" selected="">日常数据 · 1K × 40</option>')
+    const tableMarkup = renderToStaticMarkup(
+      <I18nProvider>
+        <Studio defaultValue={{ scenario: 'analysis' }} />
+      </I18nProvider>,
+    )
+    expect(tableMarkup).toContain(
+      '<option value="everyday" selected="">日常数据 · 1K × 40</option>',
+    )
   })
 })

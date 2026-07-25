@@ -15,7 +15,9 @@ import {
 } from 'lucide-react'
 import {
   Component,
+  lazy,
   memo,
+  Suspense,
   useCallback,
   useEffect,
   useMemo,
@@ -26,10 +28,10 @@ import {
 } from 'react'
 import {
   UltiGridInsight,
+  type InsightViewportSnapshot,
   type UltiGridInsightApi,
   type UltiGridInsightLocaleText,
 } from '@ultigrid/insight'
-import type { ViewportSnapshot } from '@ultigrid/core'
 import {
   Studio,
   DEFAULT_STUDIO_CONFIG,
@@ -37,9 +39,7 @@ import {
   type StudioPerformanceMetrics,
   type StudioTableConfig,
 } from './studio'
-import { ComponentGallery } from './demo/ComponentGallery'
 import { RepositoryIntro } from './demo/RepositoryIntro'
-import { SpreadsheetDemo } from './demo/SpreadsheetDemo'
 import {
   createDemoColumnGetter,
   createDemoRowSource,
@@ -50,6 +50,12 @@ import './styles/demo.css'
 
 const ANALYSIS_MERGE_OPTIONS = { columns: [0, 1] } as const
 const ANALYSIS_SINGLE_COLUMN_MERGE_OPTIONS = { columns: [0] } as const
+const ComponentGallery = lazy(() => import('./demo/ComponentGallery').then((module) => ({
+  default: module.ComponentGallery,
+})))
+const SpreadsheetDemo = lazy(() => import('./demo/SpreadsheetDemo').then((module) => ({
+  default: module.SpreadsheetDemo,
+})))
 
 interface ToastState {
   tone: 'success' | 'error'
@@ -89,7 +95,7 @@ export function App() {
   const { locale, t } = useI18n()
   const [config, setConfig] = useState<StudioTableConfig>(() => ({ ...DEFAULT_STUDIO_CONFIG }))
   const tableApiRef = useRef<UltiGridInsightApi | null>(null)
-  const snapshotRef = useRef<ViewportSnapshot | null>(null)
+  const snapshotRef = useRef<InsightViewportSnapshot | null>(null)
   const velocityRef = useRef({
     time: performance.now(),
     lastMovementTime: 0,
@@ -179,7 +185,7 @@ export function App() {
     }
   }, [])
 
-  const handleViewport = useCallback((snapshot: ViewportSnapshot) => {
+  const handleViewport = useCallback((snapshot: InsightViewportSnapshot) => {
     snapshotRef.current = snapshot
     const now = performance.now()
     const elapsed = Math.max(1, now - velocityRef.current.time)
@@ -208,12 +214,12 @@ export function App() {
           columnEnd: Math.min(config.columnCount - 1, 127),
         }
       : undefined
-    const operation = format === 'xlsx'
-      ? api.exportExcel('ultigrid-insight', range)
-      : format === 'png'
-        ? api.exportImage('ultigrid-insight')
-        : Promise.resolve(api.exportCsv('ultigrid-insight.csv', range))
     try {
+      const operation = format === 'xlsx'
+        ? api.exportExcel('ultigrid-insight', range)
+        : format === 'png'
+          ? api.exportImage('ultigrid-insight')
+          : Promise.resolve(api.exportCsv('ultigrid-insight.csv', range))
       await operation
       showToast({
         tone: 'success',
@@ -252,21 +258,27 @@ export function App() {
       return <RepositoryIntro />
     }
     if (stageConfig.scenario === 'gallery') {
-      return <ComponentGallery />
+      return (
+        <Suspense fallback={<DemoStageLoading title={t('studio.render.loading')} detail={t('studio.render.loading.detail')} />}>
+          <ComponentGallery />
+        </Suspense>
+      )
     }
     if (stageConfig.scenario === 'spreadsheet') {
       return (
         <DemoStageErrorBoundary
-          key={`spreadsheet:${locale}`}
+          key="spreadsheet"
           title={t('app.propsFailed')}
           retryLabel={t('app.retry')}
         >
-          <SpreadsheetDemo
-            locale={locale}
-            apiRef={tableApiRef}
-            localeText={localeText}
-            onViewportChange={handleViewport}
-          />
+          <Suspense fallback={<DemoStageLoading title={t('studio.render.loading')} detail={t('studio.render.loading.detail')} />}>
+            <SpreadsheetDemo
+              locale={locale}
+              apiRef={tableApiRef}
+              localeText={localeText}
+              onViewportChange={handleViewport}
+            />
+          </Suspense>
         </DemoStageErrorBoundary>
       )
     }
@@ -324,10 +336,20 @@ export function App() {
   )
 }
 
+function DemoStageLoading({ title, detail }: { title: string; detail: string }) {
+  return (
+    <div className="studio-loading-layer" role="status" aria-live="polite">
+      <span className="studio-spinner" />
+      <strong>{title}</strong>
+      <small>{detail}</small>
+    </div>
+  )
+}
+
 interface DemoTableStageProps {
   config: StudioTableConfig
   tableApiRef: { current: UltiGridInsightApi | null }
-  onViewportChange: (snapshot: ViewportSnapshot) => void
+  onViewportChange: (snapshot: InsightViewportSnapshot) => void
   locale: Locale
   localeText: UltiGridInsightLocaleText
 }
@@ -444,6 +466,7 @@ const DemoTableStage = memo(function DemoTableStage({
           treeColumnId={treeEnabled ? 'dimension' : undefined}
           onToggleRow={toggleRow}
           onViewportChange={onViewportChange}
+          exportCellLimit={256_000}
           apiRef={tableApiRef}
           themeColor={config.themeColor}
           emptyContent={translate(locale, 'table.empty')}

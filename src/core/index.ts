@@ -20,6 +20,8 @@ export type {
   MobileInteractionMode,
   MobileInteractionOptions,
   OverscanOptions,
+  SelectionKind,
+  SelectionEndpoints,
   TableCell,
   UltiGridViewportApi,
   UltiGridViewportProps,

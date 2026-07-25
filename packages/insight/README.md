@@ -72,7 +72,7 @@ export function SalesTable() {
 | Adjacent merging | `mergeAdjacent?: false \| AdjacentMergeOptions<TRow>`; `AdjacentMergeColumn<TRow>` selects columns whose vertically consecutive equal values become single-column Core rectangles |
 | Conditional formatting | Text, background, icon, two/three-color scale, signed data bar, priority, `stopIfTrue` |
 | Custom cells | Alignment, typography, colors, images, icons, background layer, `component`, `renderContent`, `exportValue` |
-| Layout and interaction | Core sizing, fit, four-edge freezing, direct column resize, selection, navigation, touch-first selection and copy, viewport callbacks |
+| Layout and interaction | Core sizing, fit, four-edge freezing, direct column resize, selection, navigation, data-cell click/copy callbacks, configurable copy limit, touch-first selection and copy, viewport callbacks |
 | Theme | `themeColor` is shared with Core selection, focus, and tree interaction accents |
 | Localization | English defaults with partial `localeText` overrides; business content stays caller-controlled |
 
@@ -104,7 +104,9 @@ Both paths retain `.ultigrid-insight-cell` plus `data-row-id` / `data-column-id`
 
 All public coordinates are zero-based data coordinates. Headers and row numbers are excluded from selection, viewport callbacks, merge ranges, scrolling, copy, and export ranges.
 
-`UltiGridInsightApi` exposes `scrollToCell`, `getSelection`, `copySelection`, `exportExcel`, `exportCsv`, and `exportImage`; the nested Core viewport remains an implementation detail.
+`onCellClick` receives the typed row plus data-column context; `onCopy` receives the copied data range and TSV payload. Coordinate and selection types such as `CellAddress`, `CellRange`, and `SelectionKind` are re-exported by Insight, so application code does not need a second Core import.
+
+`UltiGridInsightApi` exposes `scrollToCell`, `getSelection`, `getActiveCell`, `focus`, `copySelection`, `exportExcel`, `exportCsv`, and `exportImage`; the nested Core viewport remains an implementation detail.
 
 Only these package paths are supported:
 
@@ -120,7 +122,8 @@ The root also exports row models, public component/column/cell types, conditiona
 - Vertical adjacent merging scans the current row sequence across configured dimensions when its inputs change; generated regions default to a 100,000-item limit.
 - Conditional rules compile when Props change; visible-cell evaluation is approximately `O(W × R)`.
 - Tree models keep the current visible sequence. Caller-owned arrays, remote pages, and caches remain caller memory.
-- Excel and CSV materialize the requested range in `O(A)` time and memory, with a default 1,000,000-cell limit.
+- Excel and CSV materialize the requested range in `O(A)` time and memory, with a default 250,000-cell limit. Raise `exportCellLimit` deliberately for capable devices or move larger exports to a backend stream.
+- CSV materializes each target column definition once and neutralizes string prefixes that spreadsheet applications could interpret as formulas.
 - Excel additionally limits a sheet to 16,384 columns and 1,048,576 rows.
 - Image export captures the currently laid-out virtual viewport, not the complete logical table.
 - Custom React renderers run on the main thread; keep their DOM and synchronous work small.

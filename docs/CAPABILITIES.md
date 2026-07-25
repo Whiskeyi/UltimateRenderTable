@@ -16,8 +16,8 @@ UltiGrid 由 Studio、`@ultigrid/insight` 应用层表格和 `@ultigrid/core` �
 | 列宽直接调整 | Available | Core 需显式开启 `columnResize`；指定表头分隔线支持鼠标、触控笔、触控和键盘，并通过 `onColumnResize` 报告生命周期 |
 | 内容自适应 | Available | 只渐进测量已渲染、非合并 cell，不做全表预扫描 |
 | 容器自适应 | Available | 少列可平分剩余宽度，多列使用原生横向滚动 |
-| 单元格渲染 | Available | 支持文本、class、style、ARIA、meta 和 React renderer |
-| 选择与导航 | Available | 点击、拖拽、越界自动滚动、Shift、方向键、Tab、Enter，感知合并区域 |
+| 单元格渲染 | Available | 支持文本、class、style、逐单元格 ARIA 属性、meta 和 React renderer |
+| 选择与导航 | Available | 点击、拖拽、越界自动滚动、Shift、方向键、Tab、Enter，感知合并区域；选区遍历到边界后释放原生 Tab 顺序，树按钮与列宽分隔线等内部控件仍是 Tab 停靠点 |
 | 移动端触控 | Available | `mobileInteraction` 默认自动识别粗指针并锁定首次主方向；纵向保留原生滚动，横向单轴滚动，另含轻点选中、手柄扩选、边缘自动滚动与安全区复制动作 |
 | TSV 复制 | Available | 默认最多物化 100,000 个单元格 |
 | 主题色 | Available | `themeColor` 统一选择与焦点强调色；深度样式仍可覆盖 CSS 变量 |
@@ -35,18 +35,19 @@ UltiGrid 由 Studio、`@ultigrid/insight` 应用层表格和 `@ultigrid/core` �
 | 条件格式 | Available | 文本、背景、图标、二/三色阶、正负数据条 |
 | 自定义 Cell | Available | 对齐、字体、颜色、图片、图标、背景、自定义组件与导出值 |
 | 移动交互与列宽调整 | Available | 手势由 Core 执行；Insight 映射业务数据坐标，有表头时默认启用调宽，可传 `false` 关闭，行号不进入回调 |
-| Excel / CSV 导出 | Available | 客户端物化，默认 1,000,000-cell 上限；Excel 受工作表规格限制 |
+| Excel / CSV 导出 | Available | 客户端物化，默认 250,000-cell 上限；CSV 默认防公式注入，Excel 受工作表规格限制 |
 | PNG 导出 | Partial | 捕获当前虚拟化视口，不生成完整逻辑长图 |
-| 国际化与无障碍 | Available | `localeText`、grid/treegrid、焦点与键盘语义 |
+| 国际化 | Available | `localeText` 覆盖组件可见或播报文案；宿主仍负责业务内容翻译 |
+| ARIA 语义 | Partial | 已提供 grid/treegrid、cell/header 角色与索引、合并跨度、树状态、多选状态及已渲染活动单元格关联；pane DOM 尚无 role=row/rowgroup，不承诺完整 APG Grid 结构或一致的按行读屏导航 |
 
 ## Studio 交互层
 
 | 能力 | 状态 | 边界 |
 | --- | --- | --- |
 | 介绍页 | Available | 单屏呈现三层架构、包边界与规模指标；层级和基础/进阶能力通过按钮切换，不占用表格场景空间 |
-| 组件展厅 | Available | 基础/进阶两组共 12 个可交互示例，覆盖惰性行列、多级树、移动端触控、命令式 API、Excel/CSV/PNG 导出；每项使用实际 Demo TSX 文件进行实时源码编辑与预览 |
+| 组件展厅 | Available | 生产用例/基础/进阶三组共 14 个可交互示例；订单履约、年度预算矩阵、移动现场巡检覆盖组合工作流，其余示例覆盖惰性行列、多级树、命令式 API、Excel/CSV/PNG 导出；每项使用实际 Demo TSX 文件实时编辑与预览 |
 | 经营分析 | Available | 根与分支均可展开，至少覆盖深度 0/1/2；树形和同列纵向合并可独立开启，合并按兄弟边界断开 |
-| 条件格式场景 | Available | 组合展示五类格式规则 |
+| 电子表格 | Available | 以应用集成方式演示编辑、公式、粘贴、填充与撤销/重做；不属于 Core 内建编辑能力 |
 | Props / JSON 工作台 | Available | 可视 Props 实时提交；JSON 模式的草稿与应用动作分离；支持规模预设与主题色 |
 | 中英文、全屏、诊断 | Available | 性能 HUD 是页面 rAF 观测，不是标准 benchmark |
 | 移动端 Studio | Available | 窄屏优先保留表格舞台；顶部导航横滑并压缩，Props 使用带遮罩、拖拽把手、关闭动作和安全区适配的底部 sheet |
@@ -58,6 +59,7 @@ Studio 不发布 npm，也不进入 Core 或 Insight 的运行时依赖。
 - 可复现的浏览器 benchmark 与性能回归预算
 - 分段滚动 / 坐标重基
 - Worker 或服务端超大导出
+- `row` / `rowgroup` ownership 与跨 pane 真实读屏回归
 - 排序、筛选、分组、聚合与透视插件
 - 编辑、粘贴、填充、校验与撤销/重做事务
 

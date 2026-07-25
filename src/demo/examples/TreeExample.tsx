@@ -103,6 +103,11 @@ export default function TreeExample({ locale, t }: GalleryExampleProps) {
       showRowNumbers={false}
       fitColumns="stretch"
       ariaLabel={t('gallery.tree.title')}
+      localeText={{
+        expandRow: t('table.expandRow'),
+        collapseRow: t('table.collapseRow'),
+        nodeLoadError: t('table.nodeLoadError'),
+      }}
       style={{ height: '100%' }}
     />
   )

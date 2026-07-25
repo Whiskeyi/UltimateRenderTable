@@ -14,6 +14,13 @@ export interface CellRange {
   columnEnd: number
 }
 
+export type SelectionKind = 'cell' | 'row' | 'column' | 'sheet'
+
+export interface SelectionEndpoints {
+  anchor: CellAddress
+  focus: CellAddress
+}
+
 export interface MergedCellRange extends CellRange {
   /** Optional stable id. A compact coordinate id is generated when omitted. */
   id?: string
@@ -38,6 +45,8 @@ export interface TableCell<TValue = CellPrimitive, TMeta = unknown> {
   value: TValue
   /** Text used by the default renderer and clipboard export. */
   text?: string
+  /** Semantic role for virtual headers; defaults to gridcell. */
+  ariaRole?: 'gridcell' | 'columnheader' | 'rowheader'
   className?: string
   style?: CSSProperties
   ariaLabel?: string
@@ -158,6 +167,8 @@ export interface UltiGridViewportApi {
   scrollToCell(address: CellAddress, align?: ViewportCellAlign): void
   copySelection(): Promise<string>
   getSelection(): CellRange | null
+  /** Cell used for editing and value display; it remains stable while a range is extended. */
+  getActiveCell(): CellAddress | null
   /** Returns the current effective width for a zero-based viewport column. */
   getColumnWidth(viewportColumn: number): number | undefined
   focus(): void
@@ -191,10 +202,18 @@ export interface UltiGridViewportProps<TValue = CellPrimitive, TMeta = unknown> 
   /** Distributes spare horizontal space across columns while content is narrower than the viewport. */
   fitColumns?: FitColumnsMode
   selection?: CellRange | null
+  /** Explicit selection intent; axis selections do not expand through intersecting merges. */
+  selectionKind?: SelectionKind
+  /** Controlled directional endpoints; preserves reverse and Shift-extended ranges. */
+  selectionEndpoints?: SelectionEndpoints | null
+  /** Controlled editing/value cell within `selection`; defaults to the range's top-left cell. */
+  activeCell?: CellAddress | null
   defaultSelection?: CellRange | null
   /** Restricts pointer, drag, and keyboard selection; `null` disables selection. */
   selectionBounds?: CellRange | null
-  onSelectionChange?: (range: CellRange | null) => void
+  onSelectionChange?: (range: CellRange | null, kind: SelectionKind) => void
+  onSelectionEndpointsChange?: (endpoints: SelectionEndpoints | null) => void
+  onActiveCellChange?: (address: CellAddress | null) => void
   onCellClick?: (address: CellAddress, cell: TableCell<TValue, TMeta>) => void
   onViewportChange?: (snapshot: ViewportSnapshot) => void
   onCopy?: (range: CellRange, tsv: string) => void

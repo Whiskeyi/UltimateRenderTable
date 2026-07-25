@@ -82,7 +82,7 @@ describe('gallery mobile layout contract', () => {
       /@media \(max-width: 760px\)[\s\S]*?\.component-gallery__mobile-device\s*\{[^}]*width:\s*100%[^}]*min-width:\s*0[^}]*height:\s*100%[^}]*min-height:\s*0[^}]*aspect-ratio:\s*auto/s,
     )
     expect(demoCss).toMatch(
-      /@media \(max-width: 760px\)[\s\S]*?\.component-gallery__mobile-screen\s*\{[^}]*grid-template-rows:\s*0 0 minmax\(0, 1fr\) 0[^}]*border-radius:\s*0/s,
+      /@media \(max-width: 760px\)[\s\S]*?\.component-gallery__mobile-screen\s*\{[^}]*grid-template-rows:\s*minmax\(0, 1fr\)[^}]*border-radius:\s*0/s,
     )
     expect(demoCss).toMatch(
       /@media \(max-width: 760px\)[\s\S]*?\.component-gallery__mobile-device-control,[\s\S]*?\.component-gallery__mobile-statusbar,[\s\S]*?\.component-gallery__mobile-appbar,[\s\S]*?\.component-gallery__mobile-home-indicator\s*\{[^}]*display:\s*none/s,

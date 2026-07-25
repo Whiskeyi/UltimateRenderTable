@@ -1,5 +1,7 @@
 import type { Cell, CellObject, SheetData } from 'write-excel-file/universal'
 
+const EXCEL_CELL_TEXT_LIMIT = 32_767
+
 export type ExcelCellValue = string | number | boolean | Date | null | undefined
 
 export interface ExcelExportColumn<TRow> {
@@ -61,12 +63,12 @@ export async function createExcelExport<TRow>(
   const { default: writeExcelFile } = await import('write-excel-file/universal')
   const columns = options.columns.filter((column) => !column.hidden)
   const includeHeader = options.includeHeader !== false
-  const rowCount = getRowCount(options.rows)
+  const rowCount = columns.length === 0 ? 0 : getRowCount(options.rows)
   const matrix: SheetData = []
 
   if (includeHeader) {
     matrix.push(columns.map((column) => ({
-      value: column.header,
+      value: normalizeExcelText(column.header),
       fontWeight: 'bold',
       backgroundColor: '#F4F7F5',
       textColor: '#36423B',
@@ -76,7 +78,10 @@ export async function createExcelExport<TRow>(
 
   for (let rowIndex = 0; rowIndex < rowCount; rowIndex += 1) {
     const row = getRow(options.rows, rowIndex)
-    if (row === undefined) continue
+    if (row === undefined) {
+      matrix.push(new Array<Cell>(columns.length).fill(null))
+      continue
+    }
     const targetRow = new Array<Cell>(columns.length)
     const depth = getDepth(options, row, rowIndex)
 
@@ -109,8 +114,21 @@ export async function createExcelExport<TRow>(
   return { blob, workbook, rowCount, columnCount: columns.length }
 }
 
-function normalizeExcelValue(value: ExcelCellValue): Cell {
-  return value === null || value === undefined ? null : value
+export function normalizeExcelValue(value: ExcelCellValue): Cell {
+  if (value === null || value === undefined) return null
+  if (typeof value === 'number' && !Number.isFinite(value)) return String(value)
+  if (value instanceof Date && !Number.isFinite(value.getTime())) return String(value)
+  if (typeof value === 'string') return normalizeExcelText(value)
+  return value
+}
+
+function normalizeExcelText(value: string): string {
+  if (value.length > EXCEL_CELL_TEXT_LIMIT) {
+    throw new RangeError(
+      `Excel cell text exceeds the ${EXCEL_CELL_TEXT_LIMIT.toLocaleString('en-US')}-character limit`,
+    )
+  }
+  return value
 }
 
 function applyMergeSpans(
@@ -174,10 +192,16 @@ export function downloadBlob(blob: Blob, fileName: string): void {
   anchor.download = fileName
   anchor.rel = 'noopener'
   anchor.style.display = 'none'
-  document.body.appendChild(anchor)
-  anchor.click()
-  anchor.remove()
-  setTimeout(() => URL.revokeObjectURL(url), 0)
+  try {
+    document.body.appendChild(anchor)
+    anchor.click()
+  } finally {
+    try {
+      anchor.remove()
+    } finally {
+      setTimeout(() => URL.revokeObjectURL(url), 0)
+    }
+  }
 }
 
 function getRowCount<TRow>(source: readonly TRow[] | ExcelRowAccessor<TRow>): number {

@@ -1,7 +1,7 @@
 import { Layers3 } from 'lucide-react'
 import { useState } from 'react'
 import { useI18n } from '../i18n'
-import { GALLERY_EXAMPLES } from './galleryExamples'
+import { GALLERY_EXAMPLE_COUNT } from './galleryExampleTypes'
 
 type IntroLayer = 'studio' | 'insight' | 'core'
 type CapabilityGroup = 'basic' | 'advanced'
@@ -50,7 +50,7 @@ export function RepositoryIntro() {
         <div className="repository-intro__hero-side">
           <dl className="repository-intro__stats">
             <div><dt>{t('intro.stats.scale')}</dt><dd>10¹⁰</dd></div>
-            <div><dt>{t('intro.stats.examples')}</dt><dd>{GALLERY_EXAMPLES.length}</dd></div>
+            <div><dt>{t('intro.stats.examples')}</dt><dd>{GALLERY_EXAMPLE_COUNT}</dd></div>
             <div><dt>{t('intro.stats.packages')}</dt><dd><Layers3 size={17} /> 3</dd></div>
           </dl>
         </div>

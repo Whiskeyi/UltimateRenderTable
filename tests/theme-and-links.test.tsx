@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { App } from '../src/App'
 import { UltiGridViewport } from '../src/core'
 import { I18nProvider } from '../src/i18n'
+import { Studio } from '../src/studio'
 
 describe('theme and repository links', () => {
   it('applies a public Core theme color to the grid token', () => {
@@ -27,12 +28,18 @@ describe('theme and repository links', () => {
 
     expect(markup).toContain('--studio-accent:#198754')
     expect(markup).toContain('--ultigrid-theme-color:#198754')
-    expect(markup).toContain('type="color"')
     expect(markup.match(/href="https:\/\/github\.com\/Whiskeyi\/UltimateRenderTable"/g))
       .toHaveLength(1)
     expect(markup).toContain('target="_blank"')
     expect(markup).toContain('aria-label="查看源码"')
     expect(markup).toContain('title="查看源码"')
     expect(markup).not.toContain('<span>GitHub</span>')
+
+    const tableMarkup = renderToStaticMarkup(
+      <I18nProvider>
+        <Studio defaultValue={{ scenario: 'analysis' }} />
+      </I18nProvider>,
+    )
+    expect(tableMarkup).toContain('type="color"')
   })
 })

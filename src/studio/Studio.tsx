@@ -948,7 +948,7 @@ export function Studio<TConfig extends StudioTableConfig = StudioTableConfig>({
       event.preventDefault()
       setInspectorOpen((open) => !open)
     }
-    if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key === '0') {
+    if (!isSpreadsheetScenario && (event.metaKey || event.ctrlKey) && event.shiftKey && event.key === '0') {
       event.preventDefault()
       resetConfig()
     }
@@ -1078,15 +1078,17 @@ export function Studio<TConfig extends StudioTableConfig = StudioTableConfig>({
           </span>
           {isTableScenario ? (
             <>
-              <button
-                type="button"
-                className="studio-icon-button studio-reset-button"
-                onClick={resetConfig}
-                title={`${t('studio.reset')} (⌘⇧0)`}
-                aria-label={t('studio.reset')}
-              >
-                <RotateCcw size={16} />
-              </button>
+              {!isSpreadsheetScenario ? (
+                <button
+                  type="button"
+                  className="studio-icon-button studio-reset-button"
+                  onClick={resetConfig}
+                  title={`${t('studio.reset')} (⌘⇧0)`}
+                  aria-label={t('studio.reset')}
+                >
+                  <RotateCcw size={16} />
+                </button>
+              ) : null}
               <div
                 className="studio-export-menu"
                 onBlur={(event) => {
@@ -1165,17 +1167,18 @@ export function Studio<TConfig extends StudioTableConfig = StudioTableConfig>({
       <section className="studio-workspace">
         <section
           ref={stageShellRef}
-          className={`studio-stage-shell ${fallbackFullscreen ? 'is-fallback-fullscreen' : ''}`}
+          className={`studio-stage-shell ${isSpreadsheetScenario ? 'is-spreadsheet' : ''} ${fallbackFullscreen ? 'is-fallback-fullscreen' : ''}`}
           data-virtual-keyboard="closed"
           aria-label={t('studio.stage.label')}
           inert={mobileInspectorModalOpen}
           aria-hidden={mobileInspectorModalOpen || undefined}
         >
+          {!isSpreadsheetScenario ? (
           <div className="studio-stage-toolbar">
             <div className="studio-stage-title">
               <span className="studio-live-dot" />
               <span>
-                <strong>{isSpreadsheetScenario ? 'UltiGrid Sheets' : 'UltiGrid Insight'}</strong>
+                <strong>UltiGrid Insight</strong>
                 <small>{t(activeScenario.labelKey)} · {t(activeScenario.detailKey)}</small>
               </span>
             </div>
@@ -1186,13 +1189,6 @@ export function Studio<TConfig extends StudioTableConfig = StudioTableConfig>({
                   <span>@ultigrid/core</span>
                   <i aria-hidden="true" />
                   <span>@ultigrid/insight</span>
-                </span>
-              ) : isSpreadsheetScenario ? (
-                <span className="studio-package-pair studio-sheet-mode">
-                  <Sheet size={13} />
-                  <span>{t('spreadsheet.bookLabel')}</span>
-                  <i aria-hidden="true" />
-                  <span>A1:Z200</span>
                 </span>
               ) : (
                 <>
@@ -1252,6 +1248,7 @@ export function Studio<TConfig extends StudioTableConfig = StudioTableConfig>({
               {fullscreenError ? <span className="studio-fullscreen-error" role="status">{fullscreenError}</span> : null}
             </div>
           </div>
+          ) : null}
 
           <div
             className="studio-stage-viewport"
@@ -1289,6 +1286,7 @@ export function Studio<TConfig extends StudioTableConfig = StudioTableConfig>({
             ) : null}
           </div>
 
+          {!isSpreadsheetScenario ? (
           <footer className="studio-stage-statusbar">
             {!isTableScenario ? (
               <>
@@ -1296,13 +1294,6 @@ export function Studio<TConfig extends StudioTableConfig = StudioTableConfig>({
                 <span>@ultigrid/insight</span>
                 <span className="studio-status-spacer" />
                 <span>React · TypeScript · DOM</span>
-              </>
-            ) : isSpreadsheetScenario ? (
-              <>
-                <span><Sheet size={13} /> {t('spreadsheet.status.ready')}</span>
-                <span>{t('spreadsheet.status.selection')}</span>
-                <span className="studio-status-spacer" />
-                <span>{t('spreadsheet.status.cells', { count: '5,200' })}</span>
               </>
             ) : (
               <>
@@ -1315,6 +1306,7 @@ export function Studio<TConfig extends StudioTableConfig = StudioTableConfig>({
               </>
             )}
           </footer>
+          ) : null}
         </section>
 
         {effectiveInspectorOpen ? (

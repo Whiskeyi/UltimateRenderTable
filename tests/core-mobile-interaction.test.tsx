@@ -3,6 +3,10 @@ import { readFileSync } from 'node:fs'
 import { describe, expect, it, vi } from 'vitest'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { UltiGridViewport } from '../src/core'
+import {
+  resolveActiveDescendantId,
+  resolveMergedAriaSpan,
+} from '../src/core/UltiGridViewport'
 import { writeClipboard } from '../src/core/clipboard'
 import { isAddressInRange } from '../src/core/viewportTypes'
 import {
@@ -90,8 +94,8 @@ describe('Core mobile interaction', () => {
   it('renders localized, coarse-pointer selection affordances when forced', () => {
     const markup = renderToStaticMarkup(
       <UltiGridViewport
-        rowCount={1}
-        columnCount={1}
+        rowCount={2}
+        columnCount={2}
         getCell={() => 'value'}
         defaultSelection={{ rowStart: 0, rowEnd: 0, columnStart: 0, columnEnd: 0 }}
         mobileInteraction={{
@@ -107,15 +111,71 @@ describe('Core mobile interaction', () => {
 
     expect(markup).toContain('data-mobile-interaction="true"')
     expect(markup).toContain('data-scroll-axis-lock="dominant"')
+    expect(markup).toContain('aria-multiselectable="true"')
     expect(markup).toContain('role="toolbar"')
     expect(markup).toContain('aria-label="选区操作"')
     expect(markup).toContain('<span>复制选区</span>')
+  })
+
+  it('exposes spans only for merged owner surfaces', () => {
+    expect(resolveMergedAriaSpan(0, 1, true)).toBe(2)
+    expect(resolveMergedAriaSpan(0, 2, true)).toBe(3)
+    expect(resolveMergedAriaSpan(0, 2, false)).toBeUndefined()
+    expect(resolveMergedAriaSpan(0, 0, true)).toBeUndefined()
+  })
+
+  it('links the focused grid to a rendered cell or merged owner', () => {
+    expect(resolveActiveDescendantId(
+      'grid-a',
+      { row: 2, column: 4 },
+      undefined,
+      true,
+    )).toBe('grid-a-r2-c4')
+    expect(resolveActiveDescendantId(
+      'grid-a',
+      { row: 3, column: 5 },
+      { rowStart: 2, rowEnd: 3, columnStart: 4, columnEnd: 5 },
+      true,
+    )).toBe('grid-a-r2-c4')
+    expect(resolveActiveDescendantId(
+      'grid-a',
+      { row: 2, column: 4 },
+      undefined,
+      false,
+    )).toBeUndefined()
+  })
+
+  it('rejects selection bounds that split a merged interaction surface', () => {
+    expect(() => renderToStaticMarkup(
+      <UltiGridViewport
+        rowCount={1}
+        columnCount={3}
+        getCell={(_row, column) => column}
+        mergedCells={[{ rowStart: 0, rowEnd: 0, columnStart: 0, columnEnd: 2 }]}
+        selectionBounds={{ rowStart: 0, rowEnd: 0, columnStart: 1, columnEnd: 2 }}
+      />,
+    )).toThrow('selectionBounds must fully contain or exclude merged cell')
+  })
+
+  it('rejects duplicate merged-cell ids before they can overwrite each other', () => {
+    expect(() => renderToStaticMarkup(
+      <UltiGridViewport
+        rowCount={2}
+        columnCount={2}
+        getCell={(_row, column) => column}
+        mergedCells={[
+          { id: 'duplicate', rowStart: 0, rowEnd: 0, columnStart: 0, columnEnd: 0 },
+          { id: 'duplicate', rowStart: 1, rowEnd: 1, columnStart: 1, columnEnd: 1 },
+        ]}
+      />,
+    )).toThrow('mergedCells ids must be unique; received duplicate')
   })
 
   it('reports a rejected DOM clipboard fallback and always removes its textarea', async () => {
     const textarea = {
       value: '',
       style: {},
+      setAttribute: vi.fn(),
       select: vi.fn(),
       remove: vi.fn(),
     } as unknown as HTMLTextAreaElement
@@ -130,6 +190,41 @@ describe('Core mobile interaction', () => {
       await expect(writeClipboard('value')).rejects.toThrow('Clipboard copy was rejected')
       expect(textarea.remove).toHaveBeenCalledOnce()
     } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
+  it('falls back after a hanging Clipboard API call and restores grid focus', async () => {
+    vi.useFakeTimers()
+    const previousFocus = { focus: vi.fn() }
+    const textarea = {
+      value: '',
+      style: {},
+      setAttribute: vi.fn(),
+      select: vi.fn(),
+      remove: vi.fn(),
+    } as unknown as HTMLTextAreaElement
+    const execCommand = vi.fn(() => true)
+    vi.stubGlobal('navigator', {
+      clipboard: { writeText: vi.fn(() => new Promise<void>(() => undefined)) },
+    })
+    vi.stubGlobal('document', {
+      activeElement: previousFocus,
+      createElement: vi.fn(() => textarea),
+      body: { appendChild: vi.fn() },
+      execCommand,
+    })
+
+    try {
+      const result = writeClipboard('value', 75)
+      await vi.advanceTimersByTimeAsync(75)
+      await expect(result).resolves.toBeUndefined()
+      expect(execCommand).toHaveBeenCalledWith('copy')
+      expect(textarea.setAttribute).toHaveBeenCalledWith('readonly', '')
+      expect(textarea.remove).toHaveBeenCalledOnce()
+      expect(previousFocus.focus).toHaveBeenCalledWith({ preventScroll: true })
+    } finally {
+      vi.useRealTimers()
       vi.unstubAllGlobals()
     }
   })

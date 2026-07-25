@@ -32,6 +32,8 @@ import {
   type MergedCellRange,
   type MobileInteractionOptions,
   type OverscanOptions,
+  type SelectionEndpoints,
+  type SelectionKind,
   type UltiGridViewportApi,
   type ViewportCellAlign,
   type ViewportSnapshot,
@@ -43,6 +45,7 @@ import {
   type ConditionalFormatRule,
 } from './conditionalFormatting.js'
 import { downloadBlob, exportTableToExcel } from './excelExport.js'
+import { createCsvText, ensureCsvFileName } from './csvExport.js'
 import { exportTableToImage } from './imageExport.js'
 import {
   buildInsightViewportColumnWidths,
@@ -50,6 +53,7 @@ import {
 } from './columnLayout.js'
 import {
   dataAddressToViewport,
+  viewportRangeToData,
   viewportSnapshotToData,
 } from './coordinates.js'
 import { useInsightSelectionAdapter } from './interactionAdapter.js'
@@ -135,6 +139,9 @@ export interface UltiGridInsightApi {
   scrollToCell(address: CellAddress, align?: ViewportCellAlign): void
   copySelection(): Promise<string>
   getSelection(): CellRange | null
+  /** Data cell used for editing and value display while a range is extended. */
+  getActiveCell(): CellAddress | null
+  focus(): void
   exportExcel(fileName?: string, range?: InsightExportRange): Promise<void>
   exportImage(fileName?: string): Promise<void>
   exportCsv(fileName?: string, range?: InsightExportRange): void
@@ -229,8 +236,22 @@ export interface UltiGridInsightBaseProps<TRow> {
   onToggleError?: (error: unknown, rowId: InsightRowId) => void
   /** Controlled selection in zero-based data coordinates; headers and row numbers are excluded. */
   selection?: CellRange | null
-  onSelectionChange?: (range: CellRange | null) => void
+  /** Explicit selection intent for merge-aware row, column, and sheet selection. */
+  selectionKind?: SelectionKind
+  /** Controlled directional endpoints in zero-based data coordinates. */
+  selectionEndpoints?: SelectionEndpoints | null
+  /** Controlled editing/value cell within `selection`, in zero-based data coordinates. */
+  activeCell?: CellAddress | null
+  onSelectionChange?: (range: CellRange | null, kind: SelectionKind) => void
+  onSelectionEndpointsChange?: (endpoints: SelectionEndpoints | null) => void
+  onActiveCellChange?: (address: CellAddress | null) => void
+  /** Fires for data cells only, with zero-based data coordinates and the typed row. */
+  onCellClick?: (context: InsightCellContext<TRow>) => void
   onViewportChange?: (snapshot: InsightViewportSnapshot) => void
+  /** Receives the copied data-coordinate range after clipboard materialization succeeds. */
+  onCopy?: (range: CellRange, tsv: string) => void
+  /** Safety ceiling for clipboard materialization. Defaults to 100,000 cells. */
+  copyCellLimit?: number
   /** Touch-first pan, tap selection, range handle, and safe-area copy affordances. */
   mobileInteraction?: boolean | InsightMobileInteractionOptions
   /** Direct header resizing in data-column coordinates. Enabled when a header is shown. */
@@ -302,7 +323,7 @@ const BUILTIN_ICONS: Record<string, LucideIcon> = {
 
 const EMPTY_MERGED_CELLS = Object.freeze([]) as readonly MergedCellRange[]
 const EMPTY_CONDITIONAL_RULES = Object.freeze([]) as readonly ConditionalFormatRule<unknown, unknown>[]
-const DEFAULT_EXPORT_CELL_LIMIT = 1_000_000
+export const DEFAULT_EXPORT_CELL_LIMIT = 250_000
 const DEFAULT_LOCALE_TEXT: UltiGridInsightLocaleText = {
   expandRow: 'Expand row',
   collapseRow: 'Collapse row',
@@ -353,8 +374,16 @@ export function UltiGridInsight<TRow>(props: UltiGridInsightProps<TRow>) {
     onToggleRow,
     onToggleError,
     selection,
+    selectionKind,
+    selectionEndpoints,
+    activeCell,
     onSelectionChange,
+    onSelectionEndpointsChange,
+    onActiveCellChange,
+    onCellClick,
     onViewportChange,
+    onCopy,
+    copyCellLimit,
     mobileInteraction,
     columnResize = true,
     onColumnResize,
@@ -453,6 +482,57 @@ export function UltiGridInsight<TRow>(props: UltiGridInsightProps<TRow>) {
     rowCount: dataRowCount,
     columnCount: dataColumnCount,
   })
+  const viewportActiveCell = activeCell === undefined
+    ? undefined
+    : activeCell
+      ? dataAddressToViewport(activeCell, headerOffset, rowNumberOffset)
+      : null
+  const viewportSelectionEndpoints = selectionEndpoints === undefined
+    ? undefined
+    : selectionEndpoints
+      ? {
+          anchor: dataAddressToViewport(selectionEndpoints.anchor, headerOffset, rowNumberOffset),
+          focus: dataAddressToViewport(selectionEndpoints.focus, headerOffset, rowNumberOffset),
+        }
+      : null
+  const handleViewportActiveCellChange = useCallback((address: CellAddress | null) => {
+    if (!address) {
+      onActiveCellChange?.(null)
+      return
+    }
+    const row = address.row - headerOffset
+    const column = address.column - rowNumberOffset
+    onActiveCellChange?.(
+      row >= 0 && row < dataRowCount && column >= 0 && column < dataColumnCount
+        ? { row, column }
+        : null,
+    )
+  }, [dataColumnCount, dataRowCount, headerOffset, onActiveCellChange, rowNumberOffset])
+  const handleViewportSelectionEndpointsChange = useCallback((
+    endpoints: SelectionEndpoints | null,
+  ) => {
+    if (!endpoints) {
+      onSelectionEndpointsChange?.(null)
+      return
+    }
+    const toData = (address: CellAddress): CellAddress => ({
+      row: address.row - headerOffset,
+      column: address.column - rowNumberOffset,
+    })
+    const anchor = toData(endpoints.anchor)
+    const focus = toData(endpoints.focus)
+    const valid = [anchor, focus].every((address) => (
+      address.row >= 0 && address.row < dataRowCount
+      && address.column >= 0 && address.column < dataColumnCount
+    ))
+    onSelectionEndpointsChange?.(valid ? { anchor, focus } : null)
+  }, [
+    dataColumnCount,
+    dataRowCount,
+    headerOffset,
+    onSelectionEndpointsChange,
+    rowNumberOffset,
+  ])
   const handleViewportChange = useMemo(
     () => onViewportChange
       ? (snapshot: ViewportSnapshot) => onViewportChange(viewportSnapshotToData(
@@ -497,6 +577,52 @@ export function UltiGridInsight<TRow>(props: UltiGridInsightProps<TRow>) {
     trimOldest(columnCache, 2_048)
     return column
   }, [columns, getLazyColumn, columnCache])
+
+  const handleViewportCellClick = useCallback((address: CellAddress, cell: { value: unknown }) => {
+    const rowIndex = address.row - headerOffset
+    const columnIndex = address.column - rowNumberOffset
+    if (
+      rowIndex < 0 || rowIndex >= dataRowCount
+      || columnIndex < 0 || columnIndex >= dataColumnCount
+    ) return
+    const row = getRow(rowIndex)
+    if (row === undefined) return
+    const column = getColumn(columnIndex)
+    onCellClick?.({
+      row,
+      rowId: resolveRowId(row, rowIndex),
+      rowIndex,
+      columnId: column.id,
+      columnIndex,
+      value: cell.value as InsightCellValue,
+    })
+  }, [
+    dataColumnCount,
+    dataRowCount,
+    getColumn,
+    getRow,
+    headerOffset,
+    onCellClick,
+    resolveRowId,
+    rowNumberOffset,
+  ])
+
+  const handleViewportCopy = useCallback((range: CellRange, tsv: string) => {
+    const dataRange = viewportRangeToData(
+      range,
+      headerOffset,
+      rowNumberOffset,
+      dataRowCount,
+      dataColumnCount,
+    )
+    if (dataRange) onCopy?.(dataRange, tsv)
+  }, [
+    dataColumnCount,
+    dataRowCount,
+    headerOffset,
+    onCopy,
+    rowNumberOffset,
+  ])
 
   const effectiveColumnResize = useMemo<boolean | ColumnResizeOptions>(() => {
     if (!showHeader || columnResize === false) return false
@@ -656,6 +782,14 @@ export function UltiGridInsight<TRow>(props: UltiGridInsightProps<TRow>) {
     if (showHeader && gridRow === 0) {
       const dataColumnIndex = gridColumn - rowNumberOffset
       const column = dataColumnIndex >= 0 ? getColumn(dataColumnIndex) : undefined
+      const allRowsSelected = Boolean(dataSelection
+        && dataSelection.rowStart === 0 && dataSelection.rowEnd === dataRowCount - 1)
+      const allColumnsSelected = Boolean(dataSelection
+        && dataSelection.columnStart === 0 && dataSelection.columnEnd === dataColumnCount - 1)
+      const axisSelected = showRowNumbers && gridColumn === 0
+        ? allRowsSelected && allColumnsSelected
+        : allRowsSelected && dataSelection !== null
+          && dataColumnIndex >= dataSelection.columnStart && dataColumnIndex <= dataSelection.columnEnd
       const meta: HeaderMeta<TRow> = {
         kind: 'header',
         column,
@@ -665,7 +799,12 @@ export function UltiGridInsight<TRow>(props: UltiGridInsightProps<TRow>) {
       return {
         value: column?.headerText ?? (typeof column?.header === 'string' ? column.header : ''),
         text: column?.headerText ?? (typeof column?.header === 'string' ? column.header : ''),
-        className: 'ultigrid-insight-surface ultigrid-insight-surface--header',
+        ariaRole: column ? 'columnheader' as const : 'gridcell' as const,
+        className: [
+          'ultigrid-insight-surface',
+          'ultigrid-insight-surface--header',
+          axisSelected ? 'ultigrid-insight-surface--axis-selected' : '',
+        ].filter(Boolean).join(' '),
         meta,
       }
     }
@@ -674,11 +813,19 @@ export function UltiGridInsight<TRow>(props: UltiGridInsightProps<TRow>) {
     const row = getRow(rowIndex)
     if (row === undefined) return { value: '', text: '' }
     if (showRowNumbers && gridColumn === 0) {
+      const axisSelected = Boolean(dataSelection
+        && dataSelection.columnStart === 0 && dataSelection.columnEnd === dataColumnCount - 1
+        && rowIndex >= dataSelection.rowStart && rowIndex <= dataSelection.rowEnd)
       const meta: RowNumberMeta = { kind: 'rowNumber', rowIndex }
       return {
         value: rowIndex + 1,
         text: String(rowIndex + 1),
-        className: 'ultigrid-insight-surface ultigrid-insight-surface--row-number',
+        ariaRole: 'rowheader' as const,
+        className: [
+          'ultigrid-insight-surface',
+          'ultigrid-insight-surface--row-number',
+          axisSelected ? 'ultigrid-insight-surface--axis-selected' : '',
+        ].filter(Boolean).join(' '),
         meta,
       }
     }
@@ -746,6 +893,9 @@ export function UltiGridInsight<TRow>(props: UltiGridInsightProps<TRow>) {
     stripedRows,
     treeColumnId,
     activeConditionalRules,
+    dataColumnCount,
+    dataRowCount,
+    dataSelection,
     plainSurfaceStyleCache,
   ])
 
@@ -813,6 +963,7 @@ export function UltiGridInsight<TRow>(props: UltiGridInsightProps<TRow>) {
     const treePrefix = isTreeCell ? (
       <TreePrefix
         meta={meta.rowMeta!}
+        nodeLabel={context.cell.text ?? ''}
         messages={messages}
         onToggle={onToggleRow
           ? () => {
@@ -876,16 +1027,22 @@ export function UltiGridInsight<TRow>(props: UltiGridInsightProps<TRow>) {
     const range = normalizeExportRange(requestedRange, dataRowCount, dataColumnCount)
     const exportRowCount = Math.max(0, range.rowEnd - range.rowStart + 1)
     const exportColumnCount = Math.max(0, range.columnEnd - range.columnStart + 1)
+    const materializedRowCount = exportColumnCount === 0 ? 0 : exportRowCount
     if (exportColumnCount > 16_384) {
       throw new RangeError(messages.excelColumnLimit)
     }
-    if (exportRowCount > 1_048_575) {
+    if (materializedRowCount > 1_048_575) {
       throw new RangeError(messages.excelRowLimit)
     }
-    assertExportCellCount(exportRowCount, exportColumnCount, exportCellLimit, messages)
+    assertExportCellCount(
+      Math.max(1, materializedRowCount),
+      exportColumnCount,
+      exportCellLimit,
+      messages,
+    )
     await exportTableToExcel({
       rows: {
-        getRowCount: () => exportRowCount,
+        getRowCount: () => materializedRowCount,
         getRow: (index) => getRow(index + range.rowStart),
         getRowDepth: (index) => resolveRowMeta(index + range.rowStart)?.depth ?? 0,
       },
@@ -953,25 +1110,26 @@ export function UltiGridInsight<TRow>(props: UltiGridInsightProps<TRow>) {
     const range = normalizeExportRange(requestedRange, dataRowCount, dataColumnCount)
     const exportRows = Math.max(0, range.rowEnd - range.rowStart + 1)
     const exportColumns = Math.max(0, range.columnEnd - range.columnStart + 1)
-    assertExportCellCount(exportRows, exportColumns, exportCellLimit, messages)
-    const chunks: string[] = []
-    chunks.push(Array.from({ length: exportColumns }, (_, localIndex) => {
-      const index = localIndex + range.columnStart
-      const column = getColumn(index)
-      return csvValue(column.headerText ?? (typeof column.header === 'string' ? column.header : column.id))
-    }).join(','))
-    for (let localRowIndex = 0; localRowIndex < exportRows; localRowIndex += 1) {
-      const rowIndex = localRowIndex + range.rowStart
-      const row = getRow(rowIndex)
-      if (row === undefined) continue
-      chunks.push(Array.from({ length: exportColumns }, (_, localColumnIndex) => {
-        const columnIndex = localColumnIndex + range.columnStart
-        const column = getColumn(columnIndex)
+    assertExportCellCount(Math.max(1, exportRows), exportColumns, exportCellLimit, messages)
+    const csv = createCsvText({
+      rowStart: range.rowStart,
+      rowCount: exportRows,
+      columnStart: range.columnStart,
+      columnCount: exportColumns,
+      getRow,
+      getColumn,
+      getColumnHeader: (column) => (
+        column.headerText ?? (typeof column.header === 'string' ? column.header : column.id)
+      ),
+      getCellValue: (column, row, rowIndex) => {
         const value = column.getValue(row, rowIndex)
-        return csvValue(column.exportValue ? column.exportValue(value, row, rowIndex) : value)
-      }).join(','))
-    }
-    downloadBlob(new Blob([`\ufeff${chunks.join('\r\n')}`], { type: 'text/csv;charset=utf-8' }), fileName)
+        return column.exportValue ? column.exportValue(value, row, rowIndex) : value
+      },
+    })
+    downloadBlob(
+      new Blob([csv], { type: 'text/csv;charset=utf-8' }),
+      ensureCsvFileName(fileName),
+    )
   }, [dataRowCount, dataColumnCount, getColumn, getRow, exportCellLimit, messages])
 
   useEffect(() => {
@@ -987,7 +1145,24 @@ export function UltiGridInsight<TRow>(props: UltiGridInsightProps<TRow>) {
         return viewportApiRef.current?.copySelection() ?? Promise.resolve('')
       },
       getSelection() {
-        return dataSelection
+        return viewportRangeToData(
+          viewportApiRef.current?.getSelection() ?? null,
+          headerOffset,
+          rowNumberOffset,
+          dataRowCount,
+          dataColumnCount,
+        )
+      },
+      getActiveCell() {
+        const active = viewportApiRef.current?.getActiveCell()
+        if (!active) return null
+        const row = active.row - headerOffset
+        const column = active.column - rowNumberOffset
+        if (row < 0 || row >= dataRowCount || column < 0 || column >= dataColumnCount) return null
+        return { row, column }
+      },
+      focus() {
+        viewportApiRef.current?.focus()
       },
       exportExcel,
       exportImage,
@@ -1006,7 +1181,6 @@ export function UltiGridInsight<TRow>(props: UltiGridInsightProps<TRow>) {
     exportExcel,
     exportImage,
     exportCsv,
-    dataSelection,
   ])
 
   const rootClassName = [
@@ -1014,6 +1188,7 @@ export function UltiGridInsight<TRow>(props: UltiGridInsightProps<TRow>) {
     showGridLines ? '' : 'ultigrid-insight--no-grid',
     className ?? '',
   ].filter(Boolean).join(' ')
+  const dataIsEmpty = dataRowCount === 0 || dataColumnCount === 0
 
   return (
     <div ref={shellRef} className={rootClassName} style={style}>
@@ -1041,8 +1216,16 @@ export function UltiGridInsight<TRow>(props: UltiGridInsightProps<TRow>) {
         columnLayoutVersion={columnLayoutVersion}
         selectionBounds={viewportSelectionBounds}
         selection={viewportSelection}
+        selectionKind={selectionKind}
+        selectionEndpoints={viewportSelectionEndpoints}
+        activeCell={viewportActiveCell}
         onSelectionChange={handleViewportSelectionChange}
+        onSelectionEndpointsChange={handleViewportSelectionEndpointsChange}
+        onActiveCellChange={handleViewportActiveCellChange}
+        onCellClick={onCellClick ? handleViewportCellClick : undefined}
         onViewportChange={handleViewportChange}
+        onCopy={onCopy ? handleViewportCopy : undefined}
+        copyCellLimit={copyCellLimit}
         mobileInteraction={effectiveMobileInteraction}
         columnResize={effectiveColumnResize}
         onColumnResize={onColumnResize ? handleColumnResize : undefined}
@@ -1050,24 +1233,39 @@ export function UltiGridInsight<TRow>(props: UltiGridInsightProps<TRow>) {
         themeColor={themeColor}
         ariaLabel={ariaLabel}
         ariaRole={treeColumnId ? 'treegrid' : 'grid'}
-        emptyContent={emptyContent}
+        emptyContent={null}
       />
+      {dataIsEmpty && emptyContent != null ? (
+        <div
+          className="ultigrid-insight-empty"
+          role="status"
+          style={{ top: showHeader ? Math.max(36, defaultRowHeight) : 0 }}
+        >
+          {emptyContent}
+        </div>
+      ) : null}
     </div>
   )
 }
 
 function TreePrefix({
   meta,
+  nodeLabel,
   onToggle,
   messages,
 }: {
   meta: RowMeta
+  nodeLabel: string
   onToggle?: () => void
   messages: UltiGridInsightLocaleText
 }) {
   return (
     <span
-      className="ultigrid-insight-tree-prefix"
+      className={[
+        'ultigrid-insight-tree-prefix',
+        meta.loading ? 'is-loading' : '',
+        meta.error ? 'has-error' : '',
+      ].filter(Boolean).join(' ')}
       style={{ paddingLeft: meta.depth * 16 }}
       title={meta.error ? messages.nodeLoadError : undefined}
     >
@@ -1075,14 +1273,22 @@ function TreePrefix({
         onToggle ? (
           <button
             type="button"
-            aria-label={meta.expanded ? messages.collapseRow : messages.expandRow}
+            aria-label={buildTreeToggleLabel(
+              meta.expanded ? messages.collapseRow : messages.expandRow,
+              nodeLabel,
+              meta.error ? messages.nodeLoadError : undefined,
+            )}
             aria-expanded={meta.expanded}
             aria-busy={meta.loading || undefined}
             disabled={meta.loading}
             onPointerDown={(event) => event.stopPropagation()}
             onClick={onToggle}
           >
-            {meta.expanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+            {meta.loading ? (
+              <span className="ultigrid-insight-tree-spinner" aria-hidden="true" />
+            ) : meta.error ? (
+              <CircleAlert size={13} aria-hidden="true" />
+            ) : meta.expanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
           </button>
         ) : (
           <span className="ultigrid-insight-tree-toggle" aria-hidden="true">
@@ -1092,6 +1298,15 @@ function TreePrefix({
       ) : <span className="ultigrid-insight-tree-spacer" />}
     </span>
   )
+}
+
+export function buildTreeToggleLabel(
+  action: string,
+  nodeLabel: string,
+  error?: string,
+): string {
+  const labelledAction = nodeLabel ? `${action}: ${nodeLabel}` : action
+  return error ? `${error}. ${labelledAction}` : labelledAction
 }
 
 function plainSurfaceStyle(visualStyle?: InsightCellVisualStyle): PlainSurfaceStyle {
@@ -1151,11 +1366,6 @@ function defaultDisplayValue(value: unknown): string {
   if (value == null) return ''
   if (value instanceof Date) return value.toLocaleString()
   return String(value)
-}
-
-function csvValue(value: unknown): string {
-  const text = defaultDisplayValue(value)
-  return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text
 }
 
 function normalizeExportRange(

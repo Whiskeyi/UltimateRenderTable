@@ -1,6 +1,7 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
-import { InsightCell } from '../src/bi'
+import { defineInsightColumn, InsightCell, UltiGridInsight } from '../src/bi'
+import { buildTreeToggleLabel } from '../src/bi/UltiGridInsight'
 
 const baseProps = {
   row: { id: 1 },
@@ -38,5 +39,46 @@ describe('InsightCell embedding', () => {
     expect(markup).toContain('aria-selected="true"')
     expect(markup).toContain('aria-disabled="true"')
     expect(markup).toContain('aria-label="Standalone value"')
+  })
+
+  it('keeps wrapped display text available when fixed row height clips it', () => {
+    const markup = renderToStaticMarkup(
+      <InsightCell
+        {...baseProps}
+        embedded
+        displayValue="A long exception note"
+        visualStyle={{ wrap: true }}
+      />,
+    )
+
+    expect(markup).toContain('ultigrid-insight-cell--wrap')
+    expect(markup).toContain('title="A long exception note"')
+  })
+
+  it('renders the application empty state even when table chrome is present', () => {
+    const markup = renderToStaticMarkup(
+      <UltiGridInsight<{ label: string }>
+        rows={[]}
+        columns={[defineInsightColumn<{ label: string }, string>({
+          id: 'label',
+          header: 'Label',
+          getValue: (row) => row.label,
+        })]}
+        emptyContent="NO RESULTS"
+      />,
+    )
+
+    expect(markup).toContain('class="ultigrid-insight-empty"')
+    expect(markup).toContain('role="status"')
+    expect(markup).toContain('NO RESULTS')
+  })
+
+  it('identifies tree toggle buttons by their node label', () => {
+    expect(buildTreeToggleLabel('Collapse row', 'Commercial')).toBe(
+      'Collapse row: Commercial',
+    )
+    expect(buildTreeToggleLabel('Expand row', 'Direct', 'Could not load children')).toBe(
+      'Could not load children. Expand row: Direct',
+    )
   })
 })

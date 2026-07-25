@@ -22,7 +22,7 @@ const LiveExampleWorkbench = lazy(() => import('./live/LiveExampleWorkbench'))
 
 export function ComponentGallery() {
   const { locale, t } = useI18n()
-  const [activeId, setActiveId] = useState<GalleryExampleId>('virtualization')
+  const [activeId, setActiveId] = useState<GalleryExampleId>('orders')
   const [editorOpen, setEditorOpen] = useState(false)
   const [liveWorkbenchMounted, setLiveWorkbenchMounted] = useState(false)
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([])
@@ -32,6 +32,7 @@ export function ComponentGallery() {
   )
   const Example = active.component
   const groups = [
+    { level: 'production', label: t('gallery.group.production') },
     { level: 'basic', label: t('gallery.group.basic') },
     { level: 'advanced', label: t('gallery.group.advanced') },
   ] as const

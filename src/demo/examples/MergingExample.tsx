@@ -1,9 +1,9 @@
 import { useMemo } from 'react'
-import type { MergedCellRange } from '@ultigrid/core'
 import {
   UltiGridInsight,
   defineInsightColumn,
   type InsightColumnDefinition,
+  type MergedCellRange,
 } from '@ultigrid/insight'
 import type { GalleryExampleProps } from '../galleryExampleTypes'
 

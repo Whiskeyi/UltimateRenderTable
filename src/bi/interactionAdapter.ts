@@ -3,7 +3,7 @@ import {
   useMemo,
   useState,
 } from 'react'
-import type { CellRange } from '@ultigrid/core'
+import type { CellRange, SelectionKind } from '@ultigrid/core'
 import {
   dataRangeToViewport,
   viewportRangeToData,
@@ -11,7 +11,7 @@ import {
 
 interface InsightSelectionAdapterOptions {
   selection: CellRange | null | undefined
-  onSelectionChange: ((range: CellRange | null) => void) | undefined
+  onSelectionChange: ((range: CellRange | null, kind: SelectionKind) => void) | undefined
   headerOffset: number
   rowNumberOffset: number
   rowCount: number
@@ -52,7 +52,10 @@ export function useInsightSelectionAdapter({
       : null,
     [dataSelection, headerOffset, rowNumberOffset],
   )
-  const handleViewportSelectionChange = useCallback((range: CellRange | null) => {
+  const handleViewportSelectionChange = useCallback((
+    range: CellRange | null,
+    kind: SelectionKind,
+  ) => {
     const next = viewportRangeToData(
       range,
       headerOffset,
@@ -61,7 +64,7 @@ export function useInsightSelectionAdapter({
       columnCount,
     )
     if (!controlled) setInternalSelection(next)
-    onSelectionChange?.(next)
+    onSelectionChange?.(next, kind)
   }, [
     controlled,
     onSelectionChange,

@@ -51,12 +51,21 @@ export async function exportTableToImage(
 ): Promise<TableImageExportArtifact> {
   const artifact = await createTableImageExport(element, options)
   if (options.download !== false) {
-    const extension = artifact.format === 'jpeg' ? '.jpg' : '.png'
-    const baseName = options.fileName ?? 'table-export'
-    const fileName = /\.(?:png|jpe?g)$/i.test(baseName) ? baseName : `${baseName}${extension}`
-    downloadBlob(artifact.blob, fileName)
+    downloadBlob(
+      artifact.blob,
+      ensureImageFileName(options.fileName ?? 'table-export', artifact.format),
+    )
   }
   return artifact
+}
+
+export function ensureImageFileName(fileName: string, format: 'png' | 'jpeg'): string {
+  const match = /\.(png|jpe?g)$/i.exec(fileName)
+  if (match && (format === 'png' ? match[1]?.toLowerCase() === 'png' : /^jpe?g$/i.test(match[1] ?? ''))) {
+    return fileName
+  }
+  const extension = format === 'jpeg' ? '.jpg' : '.png'
+  return match ? `${fileName.slice(0, -match[0].length)}${extension}` : `${fileName}${extension}`
 }
 
 function dataUrlToBlob(dataUrl: string): Blob {

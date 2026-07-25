@@ -1,4 +1,6 @@
 import type { MessageKey } from '../i18n'
+import BudgetMatrixExample from './examples/BudgetMatrixExample'
+import budgetMatrixSource from './examples/BudgetMatrixExample.tsx?raw'
 import ConditionalExample from './examples/ConditionalExample'
 import conditionalSource from './examples/ConditionalExample.tsx?raw'
 import ExportExample from './examples/ExportExample'
@@ -13,6 +15,8 @@ import MergingExample from './examples/MergingExample'
 import mergingSource from './examples/MergingExample.tsx?raw'
 import MobileInteractionExample from './examples/MobileInteractionExample'
 import mobileInteractionSource from './examples/MobileInteractionExample.tsx?raw'
+import OrderOperationsExample from './examples/OrderOperationsExample'
+import orderOperationsSource from './examples/OrderOperationsExample.tsx?raw'
 import RendererExample from './examples/RendererExample'
 import rendererSource from './examples/RendererExample.tsx?raw'
 import SelectionExample from './examples/SelectionExample'
@@ -26,6 +30,8 @@ import virtualizationSource from './examples/VirtualizationExample.tsx?raw'
 import type { GalleryExampleComponent } from './galleryExampleTypes'
 
 export type GalleryExampleId =
+  | 'orders'
+  | 'budget'
   | 'virtualization'
   | 'frozen'
   | 'sizing'
@@ -41,7 +47,7 @@ export type GalleryExampleId =
 
 export interface GalleryExampleDefinition {
   id: GalleryExampleId
-  level: 'basic' | 'advanced'
+  level: 'production' | 'basic' | 'advanced'
   packageName: '@ultigrid/core' | '@ultigrid/insight'
   titleKey: MessageKey
   detailKey: MessageKey
@@ -50,6 +56,33 @@ export interface GalleryExampleDefinition {
 }
 
 export const GALLERY_EXAMPLES: readonly GalleryExampleDefinition[] = [
+  {
+    id: 'orders',
+    level: 'production',
+    packageName: '@ultigrid/insight',
+    titleKey: 'gallery.orders.title',
+    detailKey: 'gallery.orders.detail',
+    component: OrderOperationsExample,
+    source: orderOperationsSource,
+  },
+  {
+    id: 'budget',
+    level: 'production',
+    packageName: '@ultigrid/insight',
+    titleKey: 'gallery.budget.title',
+    detailKey: 'gallery.budget.detail',
+    component: BudgetMatrixExample,
+    source: budgetMatrixSource,
+  },
+  {
+    id: 'mobile',
+    level: 'production',
+    packageName: '@ultigrid/core',
+    titleKey: 'gallery.mobile.title',
+    detailKey: 'gallery.mobile.detail',
+    component: MobileInteractionExample,
+    source: mobileInteractionSource,
+  },
   {
     id: 'virtualization',
     level: 'basic',
@@ -139,15 +172,6 @@ export const GALLERY_EXAMPLES: readonly GalleryExampleDefinition[] = [
     detailKey: 'gallery.api.detail',
     component: ImperativeApiExample,
     source: imperativeApiSource,
-  },
-  {
-    id: 'mobile',
-    level: 'advanced',
-    packageName: '@ultigrid/core',
-    titleKey: 'gallery.mobile.title',
-    detailKey: 'gallery.mobile.detail',
-    component: MobileInteractionExample,
-    source: mobileInteractionSource,
   },
   {
     id: 'export',

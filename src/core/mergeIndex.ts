@@ -161,6 +161,40 @@ export class MergeIndex<T = unknown> {
     return output
   }
 
+  /** Expands bounds until every intersecting merged region is fully enclosed. */
+  expandBoundsToIntersectingMerges(bounds: GridBounds): GridBounds {
+    assertBounds(bounds)
+    const expanded = { ...bounds }
+    const matches: MergeRegion<T>[] = []
+    const visited = new Set<string>()
+    let changed = true
+
+    while (changed) {
+      changed = false
+      this.query(expanded, matches)
+      for (const region of matches) {
+        if (visited.has(region.id)) continue
+        visited.add(region.id)
+        const rowStart = Math.min(expanded.rowStart, region.rowStart)
+        const rowEnd = Math.max(expanded.rowEnd, region.rowEnd)
+        const columnStart = Math.min(expanded.columnStart, region.columnStart)
+        const columnEnd = Math.max(expanded.columnEnd, region.columnEnd)
+        if (
+          rowStart !== expanded.rowStart || rowEnd !== expanded.rowEnd
+          || columnStart !== expanded.columnStart || columnEnd !== expanded.columnEnd
+        ) {
+          expanded.rowStart = rowStart
+          expanded.rowEnd = rowEnd
+          expanded.columnStart = columnStart
+          expanded.columnEnd = columnEnd
+          changed = true
+        }
+      }
+    }
+
+    return expanded
+  }
+
   private ensureTree(): RTreeNode<T> | undefined {
     if (!this.dirty) return this.root
     this.root = buildPackedTree([...this.regions.values()], this.maxEntries)

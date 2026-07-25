@@ -3,6 +3,13 @@ export { defineInsightColumn, UltiGridInsight } from './UltiGridInsight.js'
 export { createRowMeta, FlatRowModel, TreeRowModel } from './rowModel.js'
 
 export type {
+  CellAddress,
+  CellRange,
+  MergedCellRange,
+  SelectionEndpoints,
+  SelectionKind,
+} from '@ultigrid/core'
+export type {
   AdjacentMergeColumn,
   AdjacentMergeOptions,
 } from './adjacentMerge.js'
