@@ -160,10 +160,13 @@ describe('gallery mobile layout contract', () => {
       /\.spreadsheet-ribbon-group\s*\{[^}]*min-width:\s*max-content[^}]*flex:\s*0 0 auto/s,
     )
     expect(demoCss).toMatch(
-      /\.spreadsheet-ribbon-group > div\s*\{[^}]*min-width:\s*max-content/s,
+      /\.spreadsheet-ribbon-group__content\s*\{[^}]*min-width:\s*max-content/s,
     )
     expect(demoCss).toMatch(
-      /@media \(max-width: 1120px\)[\s\S]*?\.spreadsheet-ribbon\s*\{[^}]*overflow-x:\s*auto[^}]*overscroll-behavior-x:\s*contain[^}]*scroll-padding-inline:\s*7px 28px/s,
+      /\.spreadsheet-ribbon\s*\{[^}]*overflow-x:\s*auto[^}]*overflow-y:\s*hidden/s,
+    )
+    expect(demoCss).toMatch(
+      /@media \(max-width: 1120px\)[\s\S]*?\.spreadsheet-ribbon\s*\{[^}]*overscroll-behavior-x:\s*contain[^}]*scroll-padding-inline:\s*7px 28px/s,
     )
     expect(demoCss).toMatch(
       /\.spreadsheet-menu > div\[role='tablist'\]\s*\{[^}]*overflow-x:\s*auto[^}]*scroll-behavior:\s*smooth/s,

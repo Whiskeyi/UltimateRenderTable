@@ -87,10 +87,94 @@ test('keeps formula references unchanged when moving a cell with cut and paste',
   await selectAddress(page, 'E15')
   await expect(formulaBar).toHaveValue('=SUM(E3:E14)')
   await page.getByRole('button', { name: '剪切', exact: true }).click()
+  await expect(formulaBar).toHaveValue('=SUM(E3:E14)')
+  await expect(page.locator('.spreadsheet-cut-status')).toContainText('E15')
 
   await selectAddress(page, 'J20')
   await page.getByRole('button', { name: '粘贴', exact: true }).click()
   await expect(formulaBar).toHaveValue('=SUM(E3:E14)')
+  await expect(page.locator('.spreadsheet-cut-status')).toHaveCount(0)
+
+  await selectAddress(page, 'E15')
+  await expect(formulaBar).toHaveValue('')
+})
+
+test('cancels a pending cut with Escape without changing the source', async ({ page }) => {
+  await openSpreadsheet(page)
+  await page.evaluate(() => {
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: () => Promise.resolve() },
+    })
+  })
+
+  const formulaBar = page.locator('.spreadsheet-formula-input')
+  await selectAddress(page, 'E15')
+  await page.getByRole('button', { name: '剪切', exact: true }).click()
+  await expect(page.locator('.spreadsheet-cut-status')).toContainText('E15')
+  await page.getByRole('tab', { name: '公式', exact: true }).focus()
+  await page.keyboard.press('Escape')
+
+  await expect(page.locator('.spreadsheet-cut-status')).toHaveCount(0)
+  await expect(formulaBar).toHaveValue('=SUM(E3:E14)')
+  await expect(page.locator('.spreadsheet-autosave')).toContainText('已取消剪切')
+})
+
+test('previews fx and quick functions before committing them', async ({ page }) => {
+  await openSpreadsheet(page)
+  const formulaBar = page.locator('.spreadsheet-formula-input')
+
+  await selectAddress(page, 'Z189')
+  await formulaBar.fill('123')
+  await page.getByRole('button', { name: '插入函数', exact: true }).click()
+  await expect(formulaBar).toHaveValue('=')
+  await formulaBar.press('Escape')
+  await expect(formulaBar).toHaveValue('123')
+
+  await selectAddress(page, 'Z190')
+  await page.getByRole('button', { name: '插入函数', exact: true }).click()
+  await expect(formulaBar).toBeFocused()
+  await expect(formulaBar).toHaveValue('=')
+  await formulaBar.press('Escape')
+  await expect(formulaBar).toHaveValue('')
+
+  await page.getByRole('tab', { name: '公式', exact: true }).click()
+  await selectAddress(page, 'Z180')
+  await formulaBar.fill('456')
+  await page.getByRole('button', { name: /SUM/ }).click()
+  await expect(formulaBar).toHaveValue('=SUM(Z180)')
+  await formulaBar.press('Escape')
+  await selectAddress(page, 'Z180')
+  await expect(formulaBar).toHaveValue('456')
+
+  await selectAddress(page, 'Z190:Z191')
+  await page.getByRole('button', { name: /SUM/ }).click()
+  await expect(formulaBar).toBeFocused()
+  await expect(formulaBar).toHaveValue('=SUM(Z190:Z191)')
+  await formulaBar.press('Escape')
+  await expect(formulaBar).toHaveValue('')
+
+  await selectAddress(page, 'Z190:Z191')
+  await page.getByRole('button', { name: /SUM/ }).click()
+  await formulaBar.press('Enter')
+  await selectAddress(page, 'Z192')
+  await expect(formulaBar).toHaveValue('=SUM(Z190:Z191)')
+})
+
+test('applies mixed toggle formatting consistently across the selection', async ({ page }) => {
+  await openSpreadsheet(page)
+  const bold = page.getByRole('button', { name: '加粗', exact: true })
+
+  await selectAddress(page, 'Z1')
+  await bold.click()
+  await selectAddress(page, 'Z1:Z2')
+  await expect(bold).toHaveAttribute('aria-pressed', 'mixed')
+  await bold.click()
+
+  await selectAddress(page, 'Z1')
+  await expect(bold).toHaveAttribute('aria-pressed', 'true')
+  await selectAddress(page, 'Z2')
+  await expect(bold).toHaveAttribute('aria-pressed', 'true')
 })
 
 test('confirms reset data loss and keeps the accepted reset undoable', async ({ page }) => {
