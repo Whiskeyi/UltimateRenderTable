@@ -4,6 +4,7 @@ import {
   cellKey,
   columnName,
   createSpreadsheetEvaluator,
+  formatSpreadsheetValue,
   parseCellInput,
   parseClipboardMatrix,
   parseSelectionLabel,
@@ -126,5 +127,22 @@ describe('spreadsheet model', () => {
       sum: 60,
       average: 20,
     })
+  })
+
+  it('keeps workbook currency fixed while localizing its presentation', () => {
+    expect(formatSpreadsheetValue(1234, 'currency', 'zh-CN')).toBe(
+      Intl.NumberFormat('zh-CN', {
+        style: 'currency',
+        currency: 'CNY',
+        maximumFractionDigits: 0,
+      }).format(1234),
+    )
+    expect(formatSpreadsheetValue(1234, 'currency', 'en-US')).toBe(
+      Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: 'CNY',
+        maximumFractionDigits: 0,
+      }).format(1234),
+    )
   })
 })

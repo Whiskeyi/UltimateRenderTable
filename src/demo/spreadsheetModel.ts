@@ -1,5 +1,6 @@
 import type { CellRange } from '@ultigrid/insight'
 import { parseTSV } from '../core/selection.js'
+import { DEMO_CURRENCY } from './currency'
 
 export type SpreadsheetCellValue = string | number
 export type SpreadsheetNumberFormat = 'general' | 'number' | 'currency' | 'percent'
@@ -196,7 +197,7 @@ export function formatSpreadsheetValue(
   if (format === 'currency') {
     return Intl.NumberFormat(locale, {
       style: 'currency',
-      currency: locale === 'zh-CN' ? 'CNY' : 'USD',
+      currency: DEMO_CURRENCY,
       maximumFractionDigits: 0,
     }).format(value)
   }

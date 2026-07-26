@@ -8,6 +8,8 @@ Core reads cells by coordinate and keeps BI semantics outside the rendering hot 
 
 ## Install
 
+> npm availability: if [`@ultigrid/core`](https://www.npmjs.com/package/@ultigrid/core) does not yet resolve, clone the repository and run `npm ci && npm run build:packages` to build the workspace packages. The install command applies once the package is available.
+
 ```bash
 npm install @ultigrid/core react react-dom
 ```
@@ -105,7 +107,7 @@ See the project [architecture](https://github.com/Whiskeyi/UltimateRenderTable/b
 
 Pull requests, merge queues, and `main` pushes run the repository CI matrix: Node 18/20/22 package compatibility, lint/build/bundle budgets, packed Vite consumers, and Chromium interaction tests. Locally, `npm run verify` covers the main non-browser gates; CI additionally repeats the packed consumer with React 18. After `npx playwright install chromium`, `npm run test:e2e` runs the built Studio browser suite.
 
-Repository releases run through manual-only `.github/workflows/publish.yml`. `workflow_dispatch` with `publish=false` verifies a candidate; `publish=true` enters the protected `npm` environment and publishes verified tarballs in Core → Insight order. A release fails when every target version already exists, so bump each changed package version instead of relying on a silent skip.
+Repository releases run through manual-only `.github/workflows/publish.yml` from `main`. `workflow_dispatch` with `publish=false` verifies a candidate; `publish=true` enters the protected `npm` environment and publishes in Core → Insight order. Verification uploads immutable, commit-scoped tarballs, and publishing consumes those exact bytes without rebuilding. A release fails when every target version already exists, so bump each changed package version instead of relying on a silent skip.
 
 For the first release, create or own the `@ultigrid` scope and store a granular access token as `NPM_TOKEN` with **Packages and scopes: Read and write** and **Bypass 2FA** enabled, then run `workflow_dispatch` with `publish=true`. Afterward, configure Trusted Publisher for both packages as `Whiskeyi / UltimateRenderTable / publish.yml`, set the repository variable `NPM_USE_OIDC=true`, and remove `NPM_TOKEN` after OIDC succeeds.
 

@@ -143,6 +143,18 @@ describe('gallery mobile layout contract', () => {
     )
   })
 
+  it('keeps Studio input focus visible independently from the selected theme color', () => {
+    expect(studioCss).toContain('--studio-focus-ring: #087f50')
+    for (const block of [
+      studioCss.match(/\.studio-number-control:focus-within\s*\{[^}]*\}/)?.[0],
+      studioCss.match(/\.studio-color-control:focus-within\s*\{[^}]*\}/)?.[0],
+      studioCss.match(/\.studio-code-editor:focus-within\s*\{[^}]*\}/)?.[0],
+    ]) {
+      expect(block).toContain('outline: 3px solid var(--studio-focus-ring)')
+      expect(block).not.toContain('--studio-accent')
+    }
+  })
+
   it('stacks every repository overview card vertically at phone widths', () => {
     expect(demoCss).toMatch(
       /@media \(max-width: 620px\)[\s\S]*?\.repository-intro\s*\{[^}]*grid-template-rows:\s*auto auto[^}]*overflow-x:\s*hidden[^}]*overflow-y:\s*auto/s,

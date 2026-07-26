@@ -3,7 +3,10 @@ import { describe, expect, it } from 'vitest'
 import { I18nProvider } from '../src/i18n'
 import { SpreadsheetDemo } from '../src/demo/SpreadsheetDemo'
 import { Studio } from '../src/studio'
-import { STUDIO_COMPACT_LAYOUT_QUERY } from '../src/studio/layoutMode'
+import {
+  STUDIO_COMPACT_LAYOUT_QUERY,
+  STUDIO_INSPECTOR_OVERLAY_QUERY,
+} from '../src/studio/layoutMode'
 
 describe('Studio mobile shell', () => {
   it('exposes an accessible bottom-sheet trigger and drag handle', () => {
@@ -41,6 +44,7 @@ describe('Studio mobile shell', () => {
     expect(STUDIO_COMPACT_LAYOUT_QUERY).toContain(
       '(max-width: 1024px) and (max-height: 600px) and (orientation: landscape)',
     )
+    expect(STUDIO_INSPECTOR_OVERLAY_QUERY).toBe('(max-width: 980px)')
   })
 
   it('removes Props Lab from the spreadsheet scenario', () => {

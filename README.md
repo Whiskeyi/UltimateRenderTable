@@ -20,11 +20,13 @@ UltiGrid treats `100,000 × 100,000` as a logical coordinate space. Data is read
 Studio ──demo/config──▶ @ultigrid/insight ──domain semantics──▶ @ultigrid/core ──▶ viewport DOM
 ```
 
-The application grid and rendering foundation ship as ESM packages and support React and ReactDOM `>=18.2 <20`. Insight depends on Core, and `@ultigrid/insight/style.css` already includes the Core styles.
+The application grid and rendering foundation are prepared as ESM packages and support React and ReactDOM `>=18.2 <20`. Insight depends on Core, and `@ultigrid/insight/style.css` already includes the Core styles.
 
 ## Quick start
 
 Application grid:
+
+> npm availability: if [`@ultigrid/insight`](https://www.npmjs.com/package/@ultigrid/insight) does not yet resolve, clone this repository and run `npm ci && npm run build:packages` to build the workspace packages. The install command below applies once the package is available.
 
 ```bash
 npm install @ultigrid/insight react react-dom
@@ -201,7 +203,7 @@ npm run test:e2e
 
 Pull requests, merge queues, and `main` pushes run `.github/workflows/ci.yml`: Node 18/20/22 unit/package compatibility, lint, full build, gzip budgets, packed Vite consumers (including React 18), and Chromium interaction tests. GitHub Pages deploys a successful `main` CI result.
 
-`.github/workflows/publish.yml` is manual-only. Run `workflow_dispatch` with `publish=false` to verify a release candidate, or `publish=true` to enter the protected `npm` environment and publish verified tarballs in `@ultigrid/core` → `@ultigrid/insight` order. Release verification repeats lint, tests, build, bundle budgets, package contracts, and packed consumers. If every target version already exists, publishing fails instead of reporting an empty successful release; bump each changed package version before publishing. `--allow-existing` is reserved for explicitly validating a completed release.
+`.github/workflows/publish.yml` is manual-only and accepts release candidates from `main`. Run `workflow_dispatch` with `publish=false` to verify a release candidate, or `publish=true` to enter the protected `npm` environment and publish in `@ultigrid/core` → `@ultigrid/insight` order. Release verification repeats lint, tests, build, bundle budgets, package contracts, packed consumers, and Chromium interaction tests, then uploads the verified tarballs as an immutable commit-scoped artifact. The publish job downloads and publishes those exact bytes without rebuilding. If every target version already exists, publishing fails instead of reporting an empty successful release; bump each changed package version before publishing. `--allow-existing` is reserved for explicitly validating a completed release.
 
 First publication:
 

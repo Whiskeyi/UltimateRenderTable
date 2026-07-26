@@ -3,6 +3,7 @@
   --studio-accent: #198754;
   --studio-accent-strong: color-mix(in srgb, var(--studio-accent) 78%, #000);
   --studio-accent-soft: color-mix(in srgb, var(--studio-accent) 10%, transparent);
+  --studio-focus-ring: #087f50;
   --studio-green: var(--studio-accent);
   --studio-ink: #202b25;
   --studio-muted: #68746d;
@@ -1306,9 +1307,10 @@
 }
 
 .studio-number-control:focus-within {
-  border-color: color-mix(in srgb, var(--studio-accent) 55%, transparent);
+  border-color: var(--studio-focus-ring);
+  outline: 3px solid var(--studio-focus-ring);
+  outline-offset: 2px;
   background: #fff;
-  box-shadow: 0 0 0 4px var(--studio-accent-soft);
 }
 
 .studio-number-control input {
@@ -1385,6 +1387,12 @@
   text-transform: uppercase;
 }
 
+.studio-color-control:focus-within {
+  border-color: var(--studio-focus-ring);
+  outline: 3px solid var(--studio-focus-ring);
+  outline-offset: 2px;
+}
+
 .studio-toggle-field {
   position: relative;
   display: flex;
@@ -1453,7 +1461,7 @@
 }
 
 .studio-toggle-field input:focus-visible + .studio-switch {
-  outline: 3px solid color-mix(in srgb, var(--studio-accent) 20%, transparent);
+  outline: 3px solid var(--studio-focus-ring);
   outline-offset: 2px;
 }
 
@@ -1587,8 +1595,10 @@
 }
 
 .studio-code-editor:focus-within {
-  border-color: color-mix(in srgb, var(--studio-accent) 75%, transparent);
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--studio-accent) 12%, transparent), 0 12px 28px rgba(18, 30, 43, 0.18);
+  border-color: var(--studio-focus-ring);
+  outline: 3px solid var(--studio-focus-ring);
+  outline-offset: 2px;
+  box-shadow: 0 12px 28px rgba(18, 30, 43, 0.18), inset 0 1px rgba(255, 255, 255, 0.05);
 }
 
 .studio-code-editor.has-error {
@@ -1778,7 +1788,7 @@
 .table-studio select:focus-visible,
 .table-studio summary:focus-visible,
 .studio-inspector-resizer:focus-visible {
-  outline: 3px solid color-mix(in srgb, var(--studio-accent) 24%, transparent);
+  outline: 3px solid var(--studio-focus-ring);
   outline-offset: 2px;
 }
 

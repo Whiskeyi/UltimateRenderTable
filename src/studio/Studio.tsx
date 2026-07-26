@@ -58,7 +58,10 @@ import type {
   StudioTableConfig,
 } from './types'
 import { DEFAULT_STUDIO_CONFIG } from './types'
-import { STUDIO_COMPACT_LAYOUT_QUERY } from './layoutMode'
+import {
+  STUDIO_COMPACT_LAYOUT_QUERY,
+  STUDIO_INSPECTOR_OVERLAY_QUERY,
+} from './layoutMode'
 import { writeTextToClipboard } from '../utils/clipboard'
 import './studio.css'
 
@@ -575,6 +578,7 @@ export function Studio<TConfig extends StudioTableConfig = StudioTableConfig>({
   const [inspectorTab, setInspectorTab] = useState<InspectorTab>('props')
   const [inspectorOpen, setInspectorOpen] = useState(true)
   const [mobileLayout, setMobileLayout] = useState(false)
+  const [inspectorOverlayLayout, setInspectorOverlayLayout] = useState(false)
   const [inspectorWidth, setInspectorWidth] = useState(410)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [fallbackFullscreen, setFallbackFullscreen] = useState(false)
@@ -608,6 +612,7 @@ export function Studio<TConfig extends StudioTableConfig = StudioTableConfig>({
     didDrag: boolean
   } | null>(null)
   const previousInspectorOpenRef = useRef(inspectorOpen)
+  const previousInspectorModalOpenRef = useRef(false)
   const exportTriggerRef = useRef<HTMLButtonElement>(null)
   const exportPopoverRef = useRef<HTMLDivElement>(null)
   const studioRootRef = useRef<HTMLElement>(null)
@@ -672,15 +677,16 @@ export function Studio<TConfig extends StudioTableConfig = StudioTableConfig>({
     previousInspectorOpenRef.current = inspectorOpen
     if (previous === inspectorOpen) return
     requestAnimationFrame(() => {
-      if (inspectorOpen) inspectorCloseRef.current?.focus()
+      if (inspectorOpen && !inspectorOverlayLayout) inspectorCloseRef.current?.focus()
       else if (mobileLayout) mobileInspectorToggleRef.current?.focus()
       else inspectorToggleRef.current?.focus()
     })
-  }, [inspectorOpen, mobileLayout])
+  }, [inspectorOpen, inspectorOverlayLayout, mobileLayout])
 
   useEffect(() => {
     if (typeof window.matchMedia !== 'function') return
-    const query = window.matchMedia(STUDIO_COMPACT_LAYOUT_QUERY)
+    const compactQuery = window.matchMedia(STUDIO_COMPACT_LAYOUT_QUERY)
+    const overlayQuery = window.matchMedia(STUDIO_INSPECTOR_OVERLAY_QUERY)
     const syncLayout = (matches: boolean) => {
       setMobileLayout(matches)
       if (!matches) return
@@ -692,9 +698,17 @@ export function Studio<TConfig extends StudioTableConfig = StudioTableConfig>({
     }
 
     const handleChange = (event: MediaQueryListEvent) => syncLayout(event.matches)
-    syncLayout(query.matches)
-    query.addEventListener('change', handleChange)
-    return () => query.removeEventListener('change', handleChange)
+    const handleOverlayChange = (event: MediaQueryListEvent) => {
+      setInspectorOverlayLayout(event.matches)
+    }
+    syncLayout(compactQuery.matches)
+    setInspectorOverlayLayout(overlayQuery.matches)
+    compactQuery.addEventListener('change', handleChange)
+    overlayQuery.addEventListener('change', handleOverlayChange)
+    return () => {
+      compactQuery.removeEventListener('change', handleChange)
+      overlayQuery.removeEventListener('change', handleOverlayChange)
+    }
   }, [])
 
   useEffect(() => {
@@ -937,10 +951,14 @@ export function Studio<TConfig extends StudioTableConfig = StudioTableConfig>({
   }, [])
 
   const handleInspectorKeyboard = useCallback((event: KeyboardEvent<HTMLElement>) => {
-    if (!mobileLayout || event.key !== 'Tab') return
+    if (!inspectorOverlayLayout || event.key !== 'Tab') return
     const focusable = Array.from(event.currentTarget.querySelectorAll<HTMLElement>(
-      'button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])',
-    )).filter((element) => element.getClientRects().length > 0)
+      'button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), summary, [tabindex]:not([tabindex="-1"])',
+    )).filter((element) => {
+      const closedDetails = element.closest('details:not([open])')
+      return element.getClientRects().length > 0
+        && (!closedDetails || element === closedDetails.querySelector(':scope > summary'))
+    })
     if (focusable.length === 0) return
     const first = focusable[0]!
     const last = focusable[focusable.length - 1]!
@@ -951,7 +969,7 @@ export function Studio<TConfig extends StudioTableConfig = StudioTableConfig>({
       event.preventDefault()
       first.focus()
     }
-  }, [mobileLayout])
+  }, [inspectorOverlayLayout])
 
   const handleKeyboard = (event: KeyboardEvent<HTMLElement>) => {
     if (supportsInspector && (event.metaKey || event.ctrlKey) && event.key === '\\') {
@@ -980,7 +998,7 @@ export function Studio<TConfig extends StudioTableConfig = StudioTableConfig>({
   const isSpreadsheetScenario = config.scenario === 'spreadsheet'
   const supportsInspector = isTableScenario && !isSpreadsheetScenario
   const effectiveInspectorOpen = inspectorOpen && supportsInspector
-  const mobileInspectorModalOpen = mobileLayout && effectiveInspectorOpen
+  const inspectorModalOpen = inspectorOverlayLayout && effectiveInspectorOpen
   const previousTableScenarioRef = useRef(isTableScenario)
   const activePreset = SCALE_PRESETS.find(
     (preset) =>
@@ -994,6 +1012,13 @@ export function Studio<TConfig extends StudioTableConfig = StudioTableConfig>({
       : t('studio.status.live')
   const jsonDirty = jsonDraft !== serializeConfig(config)
   const sampledExport = config.rowCount > 2_000 || config.columnCount > 128
+
+  useEffect(() => {
+    const wasOpen = previousInspectorModalOpenRef.current
+    previousInspectorModalOpenRef.current = inspectorModalOpen
+    if (wasOpen || !inspectorModalOpen) return
+    requestAnimationFrame(() => inspectorCloseRef.current?.focus())
+  }, [inspectorModalOpen])
 
   useEffect(() => {
     const wasTableScenario = previousTableScenarioRef.current
@@ -1032,8 +1057,8 @@ export function Studio<TConfig extends StudioTableConfig = StudioTableConfig>({
     >
       <header
         className="studio-topbar"
-        inert={mobileInspectorModalOpen}
-        aria-hidden={mobileInspectorModalOpen || undefined}
+        inert={inspectorModalOpen}
+        aria-hidden={inspectorModalOpen || undefined}
       >
         <div className="studio-brand">
           <span className="studio-brand-mark" aria-hidden="true">
@@ -1187,8 +1212,8 @@ export function Studio<TConfig extends StudioTableConfig = StudioTableConfig>({
           className={`studio-stage-shell ${isSpreadsheetScenario ? 'is-spreadsheet' : ''} ${fallbackFullscreen ? 'is-fallback-fullscreen' : ''}`}
           data-virtual-keyboard="closed"
           aria-label={t('studio.stage.label')}
-          inert={mobileInspectorModalOpen}
-          aria-hidden={mobileInspectorModalOpen || undefined}
+          inert={inspectorModalOpen}
+          aria-hidden={inspectorModalOpen || undefined}
         >
           {!isSpreadsheetScenario ? (
           <div className="studio-stage-toolbar">
@@ -1331,6 +1356,8 @@ export function Studio<TConfig extends StudioTableConfig = StudioTableConfig>({
             type="button"
             className="studio-inspector-scrim"
             aria-label={t('studio.inspector.close')}
+            aria-hidden="true"
+            tabIndex={-1}
             onClick={() => setInspectorOpen(false)}
           />
         ) : null}
@@ -1339,8 +1366,8 @@ export function Studio<TConfig extends StudioTableConfig = StudioTableConfig>({
           ref={inspectorRef}
           id={inspectorId}
           className="studio-inspector"
-          role={mobileLayout ? 'dialog' : undefined}
-          aria-modal={mobileLayout ? true : undefined}
+          role={inspectorModalOpen ? 'dialog' : undefined}
+          aria-modal={inspectorModalOpen || undefined}
           aria-label={t('studio.inspector.label')}
           data-testid="studio-inspector"
           onKeyDown={handleInspectorKeyboard}

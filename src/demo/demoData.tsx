@@ -6,6 +6,7 @@ import type {
 } from '@ultigrid/insight'
 import { translate, type Locale, type MessageKey } from '../i18n'
 import type { StudioScenario } from '../studio'
+import { DEMO_CURRENCY } from './currency'
 
 export interface DemoRow {
   id: number
@@ -276,7 +277,7 @@ function createAnalysisColumns(locale: Locale): InsightColumn<DemoRow>[] {
   const number = new Intl.NumberFormat(locale)
   const currency = new Intl.NumberFormat(locale, {
     style: 'currency',
-    currency: locale === 'zh-CN' ? 'CNY' : 'USD',
+    currency: DEMO_CURRENCY,
     maximumFractionDigits: 0,
   })
   const statuses = localizedList(locale, STATUS_KEYS)
@@ -421,7 +422,7 @@ function createAnalysisColumns(locale: Locale): InsightColumn<DemoRow>[] {
 function createTreeColumns(locale: Locale): InsightColumn<DemoRow>[] {
   const currency = new Intl.NumberFormat(locale, {
     style: 'currency',
-    currency: locale === 'zh-CN' ? 'CNY' : 'USD',
+    currency: DEMO_CURRENCY,
     maximumFractionDigits: 0,
   })
   const owners = OWNERS[locale]

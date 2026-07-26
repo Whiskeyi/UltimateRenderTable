@@ -55,6 +55,48 @@ test('aligns desktop ribbon icons, select chevrons, and group labels', async ({ 
   expect(Math.max(...metrics.labelBottoms) - Math.min(...metrics.labelBottoms)).toBeLessThanOrEqual(1)
 })
 
+test.describe('inspector overlay', () => {
+  test.use({ viewport: { width: 900, height: 700 } })
+
+  test('is modal and traps focus at the drawer breakpoint', async ({ page }) => {
+    await page.goto('/')
+    await page.locator('[data-scenario="analysis"]').click()
+
+    const inspector = page.getByTestId('studio-inspector')
+    await expect(inspector).toHaveAttribute('role', 'dialog')
+    await expect(inspector).toHaveAttribute('aria-modal', 'true')
+    await expect(page.locator('.studio-topbar')).toHaveAttribute('inert', '')
+    await expect(page.locator('.studio-stage-shell')).toHaveAttribute('inert', '')
+    await expect(inspector.locator('.studio-inspector-close')).toBeFocused()
+
+    const startsAtFirstFocusable = await inspector.evaluate((element) => {
+      const focusable = [...element.querySelectorAll<HTMLElement>(
+        'button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), summary, [tabindex]:not([tabindex="-1"])',
+      )].filter((candidate) => {
+        const closedDetails = candidate.closest('details:not([open])')
+        return candidate.getClientRects().length > 0
+          && (!closedDetails || candidate === closedDetails.querySelector(':scope > summary'))
+      })
+      return focusable.length > 1 && document.activeElement === focusable[0]
+    })
+    expect(startsAtFirstFocusable).toBe(true)
+    await page.keyboard.press('Shift+Tab')
+    await expect.poll(() => inspector.evaluate((element) => {
+      const focusable = [...element.querySelectorAll<HTMLElement>(
+        'button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), summary, [tabindex]:not([tabindex="-1"])',
+      )].filter((candidate) => {
+        const closedDetails = candidate.closest('details:not([open])')
+        return candidate.getClientRects().length > 0
+          && (!closedDetails || candidate === closedDetails.querySelector(':scope > summary'))
+      })
+      return document.activeElement === focusable.at(-1)
+    })).toBe(true)
+    await expect(inspector.locator('summary').last()).toBeFocused()
+    await page.keyboard.press('Tab')
+    await expect(inspector.locator('.studio-inspector-close')).toBeFocused()
+  })
+})
+
 test.describe('mobile layout', () => {
   test.use({ viewport: { width: 320, height: 640 } })
 

@@ -20,11 +20,13 @@ UltiGrid 将 `100,000 × 100,000` 视为逻辑坐标空间。数据按坐标读�
 Studio ──演示/配置──▶ @ultigrid/insight ──业务语义──▶ @ultigrid/core ──▶ 可见范围 DOM
 ```
 
-应用层表格与渲染底座均以 ESM 包发布，支持 React 与 ReactDOM `>=18.2 <20`。Insight 依赖 Core，且 `@ultigrid/insight/style.css` 已包含 Core 样式。
+应用层表格与渲染底座均已按 ESM 包准备，支持 React 与 ReactDOM `>=18.2 <20`。Insight 依赖 Core，且 `@ultigrid/insight/style.css` 已包含 Core 样式。
 
 ## 快速开始
 
 应用表格：
+
+> npm 可用性：如果 npm 上的 [`@ultigrid/insight`](https://www.npmjs.com/package/@ultigrid/insight) 尚不可访问，请克隆本仓库并运行 `npm ci && npm run build:packages` 构建 workspace 包；包可用后即可使用下方安装命令。
 
 ```bash
 npm install @ultigrid/insight react react-dom
@@ -199,9 +201,9 @@ npm run test:e2e
 
 ## npm 发布
 
-Pull Request、merge queue 与 `main` push 会运行 `.github/workflows/ci.yml`：Node 18/20/22 单测和包兼容性、lint、完整构建、gzip 包体预算、tarball Vite 消费端（含 React 18）以及 Chromium 交互测试。GitHub Pages 只部署通过 `main` CI 的提交。
+Pull Request、merge queue 与 `main` push 会运行 `.github/workflows/ci.yml`：Node 18/20/22 单测和包兼容性、lint、完整构建、gzip 包体预算、tarball Vite 消费端（含 React 18）以及 Chromium 交互测试。GitHub Pages 会部署通过 `main` CI 的提交。
 
-`.github/workflows/publish.yml` 仅允许手动触发。`workflow_dispatch` 使用 `publish=false` 时只验证发布候选，使用 `publish=true` 时才进入受保护的 `npm` environment，并按 `@ultigrid/core` → `@ultigrid/insight` 发布已验证 tarball。验证会重复 lint、测试、构建、包体预算、包契约和消费端检查。如果所有目标版本都已存在，发布会失败，而不会把“没有发布任何包”报告成成功；发布前必须提升发生变化的包版本。`--allow-existing` 只用于明确复核一个已经完成的发布。
+`.github/workflows/publish.yml` 仅允许手动触发，并只接受来自 `main` 的发布候选。`workflow_dispatch` 使用 `publish=false` 时只验证发布候选，使用 `publish=true` 时才进入受保护的 `npm` environment，并按 `@ultigrid/core` → `@ultigrid/insight` 发布。验证会重复 lint、测试、构建、包体预算、包契约、消费端检查和 Chromium 交互测试，再将验证过的 tarball 上传为按提交隔离的不可变 artifact；发布任务只下载并发布这些相同字节，不再重新构建。如果所有目标版本都已存在，发布会失败，而不会把“没有发布任何包”报告成成功；发布前必须提升发生变化的包版本。`--allow-existing` 只用于明确复核一个已经完成的发布。
 
 首次发布：
 

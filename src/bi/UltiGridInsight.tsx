@@ -400,6 +400,19 @@ const BUILTIN_ICONS: Record<string, LucideIcon> = {
 const EMPTY_MERGED_CELLS = Object.freeze([]) as readonly MergedCellRange[]
 const EMPTY_CONDITIONAL_RULES = Object.freeze([]) as readonly ConditionalFormatRule<unknown, unknown>[]
 export const DEFAULT_EXPORT_CELL_LIMIT = 250_000
+
+export function resolveViewportContentVersion(
+  contentVersion: string | number | undefined,
+  modelVersion: number | undefined,
+): string | number | undefined {
+  if (modelVersion === undefined) return contentVersion
+  if (contentVersion === undefined) return modelVersion
+  const serializedContentVersion = typeof contentVersion === 'number' && Object.is(contentVersion, -0)
+    ? '-0'
+    : String(contentVersion)
+  return `row-model:${modelVersion};content:${typeof contentVersion}:${serializedContentVersion}`
+}
+
 const DEFAULT_LOCALE_TEXT: UltiGridInsightLocaleText = {
   expandRow: 'Expand row',
   collapseRow: 'Collapse row',
@@ -501,15 +514,15 @@ export function UltiGridInsight<TRow>(props: UltiGridInsightProps<TRow>) {
   const activeConditionalRules = (conditionalRules ?? EMPTY_CONDITIONAL_RULES) as readonly ConditionalFormatRule<TRow, InsightCellValue>[]
   const columnCache = useMemo(
     () => new Map<number, InsightColumn<TRow>>(),
-    [columns, getLazyColumn, columnLayoutVersion],
+    [columns, getLazyColumn, columnLayoutVersion, contentVersion],
   )
   const formatterCache = useMemo(
     () => new WeakMap<InsightColumn<TRow>, CompiledConditionalFormatter<TRow, InsightCellValue>>(),
-    [columns, getLazyColumn, activeConditionalRules],
+    [columns, getLazyColumn, activeConditionalRules, contentVersion, columnLayoutVersion],
   )
   const plainSurfaceStyleCache = useMemo(
     () => new WeakMap<InsightColumn<TRow>, PlainSurfaceStyle>(),
-    [columns, getLazyColumn, contentVersion],
+    [columns, getLazyColumn, contentVersion, columnLayoutVersion],
   )
   const rowCache = useMemo(
     () => new VersionedLruCache<number, TRow>(512, contentVersion),
@@ -787,7 +800,11 @@ export function UltiGridInsight<TRow>(props: UltiGridInsightProps<TRow>) {
 
   const globalFormatter = useMemo(
     () => compileConditionalFormatting(activeConditionalRules),
-    [activeConditionalRules],
+    [activeConditionalRules, contentVersion],
+  )
+  const viewportContentVersion = resolveViewportContentVersion(
+    contentVersion,
+    rowModel ? modelVersion : undefined,
   )
 
   const getAdjacentMergeRow = useCallback((index: number): TRow | undefined => {
@@ -1314,7 +1331,7 @@ export function UltiGridInsight<TRow>(props: UltiGridInsightProps<TRow>) {
         overscan={overscan}
         fitColumns={fitColumns}
         autoSize={autoSize}
-        contentVersion={contentVersion ?? (rowModel ? modelVersion : undefined)}
+        contentVersion={viewportContentVersion}
         columnLayoutVersion={columnLayoutVersion}
         selectionBounds={viewportSelectionBounds}
         selection={viewportSelection}

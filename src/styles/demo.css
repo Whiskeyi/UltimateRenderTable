@@ -1463,6 +1463,7 @@
 
 .component-gallery {
   --gallery-border: #dfe6e1;
+  --gallery-focus-ring: #087f50;
   display: grid;
   height: 100%;
   min-height: 0;
@@ -1565,7 +1566,7 @@
 .component-gallery__tabs button:focus-visible,
 .component-gallery__source:focus-visible,
 .component-gallery__example-toolbar button:focus-visible {
-  outline: 3px solid rgba(33, 139, 86, 0.18);
+  outline: 3px solid var(--gallery-focus-ring);
   outline-offset: 2px;
 }
 
@@ -1858,6 +1859,11 @@
   line-height: 1.55;
   tab-size: 2;
   white-space: pre;
+}
+
+.component-gallery__editor:focus-visible {
+  outline: 2px solid var(--gallery-focus-ring);
+  outline-offset: -2px;
 }
 
 .component-gallery__editor-hint {

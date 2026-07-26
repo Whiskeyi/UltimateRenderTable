@@ -47,6 +47,7 @@ import {
   createDemoRowSource,
   getDemoColumnWidths,
 } from './demo/demoData'
+import { DEMO_CURRENCY } from './demo/currency'
 import { translate, useI18n, type Locale, type MessageKey } from './i18n'
 import './styles/demo.css'
 
@@ -539,7 +540,7 @@ const DemoTableStage = memo(function DemoTableStage({
 function AnalysisDashboardHeader({ locale, treeEnabled }: { locale: Locale; treeEnabled: boolean }) {
   const currency = new Intl.NumberFormat(locale, {
     style: 'currency',
-    currency: locale === 'zh-CN' ? 'CNY' : 'USD',
+    currency: DEMO_CURRENCY,
     notation: 'compact',
     maximumFractionDigits: 1,
   })

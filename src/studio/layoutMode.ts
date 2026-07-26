@@ -4,3 +4,5 @@ export const STUDIO_COMPACT_LAYOUT_QUERY = [
   '(max-width: 1024px) and (any-pointer: coarse)',
   '(max-width: 1024px) and (max-height: 600px) and (orientation: landscape)',
 ].join(', ')
+
+export const STUDIO_INSPECTOR_OVERLAY_QUERY = '(max-width: 980px)'

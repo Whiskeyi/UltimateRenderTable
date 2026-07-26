@@ -181,6 +181,11 @@ interface PaneLayer {
   scrollColumns: boolean
 }
 
+interface PaneMergeFragment {
+  merge: MergeRegion<CellRange>
+  bounds: CellRange
+}
+
 interface A11yOwnedCell {
   column: number
   id: string
@@ -800,18 +805,30 @@ export function UltiGridViewport<TValue = CellPrimitive, TMeta = unknown>(
     const visibleColumns = countWindow(visibleWindow.columns) + fixed.left + fixed.right
     const nextRenderedRows = countWindow(renderedWindow.rows) + fixed.top + fixed.bottom
     const nextRenderedColumns = countWindow(renderedWindow.columns) + fixed.left + fixed.right
+    const snapshotRows = resolveViewportSnapshotWindow(
+      visibleWindow.rows,
+      rowCount,
+      fixed.top,
+      fixed.bottom,
+    )
+    const snapshotColumns = resolveViewportSnapshotWindow(
+      visibleWindow.columns,
+      columnCount,
+      fixed.left,
+      fixed.right,
+    )
     const snapshot: ViewportSnapshot = {
-      rowStart: visibleWindow.rows.start,
-      rowEnd: visibleWindow.rows.end,
-      columnStart: visibleWindow.columns.start,
-      columnEnd: visibleWindow.columns.end,
+      rowStart: snapshotRows.start,
+      rowEnd: snapshotRows.end,
+      columnStart: snapshotColumns.start,
+      columnEnd: snapshotColumns.end,
       visibleCellCount: visibleRows * visibleColumns,
       renderedCellCount: nextRenderedRows * nextRenderedColumns,
       scrollTop: top,
       scrollLeft: left,
     }
     onViewportChange(snapshot)
-  }, [onViewportChange, fixed])
+  }, [onViewportChange, fixed, rowCount, columnCount])
 
   const getPaneLayerRef = useCallback((
     paneId: string,
@@ -2292,8 +2309,9 @@ export function UltiGridViewport<TValue = CellPrimitive, TMeta = unknown>(
   )
 
   const mergeFragments = useMemo(() => {
-    const byPane = new Map<string, MergeRegion<CellRange>[]>()
+    const byPane = new Map<string, PaneMergeFragment[]>()
     const ownerByMerge = new Map<string, string>()
+    const ownerPriorityByMerge = new Map<string, number>()
     for (const pane of panes) {
       const merges = mergeIndex.query({
         rowStart: pane.rows.start,
@@ -2301,14 +2319,26 @@ export function UltiGridViewport<TValue = CellPrimitive, TMeta = unknown>(
         columnStart: pane.columns.start,
         columnEnd: pane.columns.end,
       })
-      byPane.set(pane.id, merges)
+      const fragments: PaneMergeFragment[] = []
       for (const merge of merges) {
-        const ownsAnchor = merge.rowStart >= pane.rows.start
-          && merge.rowStart <= pane.rows.end
-          && merge.columnStart >= pane.columns.start
-          && merge.columnStart <= pane.columns.end
-        if (ownsAnchor || !ownerByMerge.has(merge.id)) ownerByMerge.set(merge.id, pane.id)
+        const fragment: PaneMergeFragment = {
+          merge,
+          bounds: {
+            rowStart: Math.max(merge.rowStart, pane.rows.start),
+            rowEnd: Math.min(merge.rowEnd, pane.rows.end),
+            columnStart: Math.max(merge.columnStart, pane.columns.start),
+            columnEnd: Math.min(merge.columnEnd, pane.columns.end),
+          },
+        }
+        fragments.push(fragment)
+        const ownerPriority = Number(pane.rows.kind !== 'middle')
+          + Number(pane.columns.kind !== 'middle')
+        if (ownerPriority > (ownerPriorityByMerge.get(merge.id) ?? -1)) {
+          ownerPriorityByMerge.set(merge.id, ownerPriority)
+          ownerByMerge.set(merge.id, pane.id)
+        }
       }
+      byPane.set(pane.id, fragments)
     }
     return { byPane, ownerByMerge }
   }, [panes, mergeIndex])
@@ -2324,17 +2354,14 @@ export function UltiGridViewport<TValue = CellPrimitive, TMeta = unknown>(
     if (cells) cells.push(ownedCell)
     else a11yOwnedCellsByRow.set(row, [ownedCell])
   }
-
   const renderPane = (pane: Pane): ReactNode => {
-    const merges = mergeFragments.byPane.get(pane.id) ?? []
-    const coveredByRow = new Map<number, MergeRegion<CellRange>[]>()
-    for (const merge of merges) {
-      const from = Math.max(merge.rowStart, pane.rows.start)
-      const to = Math.min(merge.rowEnd, pane.rows.end)
-      for (let row = from; row <= to; row += 1) {
+    const fragments = mergeFragments.byPane.get(pane.id) ?? []
+    const coveredByRow = new Map<number, PaneMergeFragment[]>()
+    for (const fragment of fragments) {
+      for (let row = fragment.bounds.rowStart; row <= fragment.bounds.rowEnd; row += 1) {
         const entries = coveredByRow.get(row)
-        if (entries) entries.push(merge)
-        else coveredByRow.set(row, [merge])
+        if (entries) entries.push(fragment)
+        else coveredByRow.set(row, [fragment])
       }
     }
 
@@ -2342,7 +2369,9 @@ export function UltiGridViewport<TValue = CellPrimitive, TMeta = unknown>(
     for (let row = pane.rows.start; row <= pane.rows.end; row += 1) {
       const covered = coveredByRow.get(row)
       for (let column = pane.columns.start; column <= pane.columns.end; column += 1) {
-        if (covered?.some((merge) => column >= merge.columnStart && column <= merge.columnEnd)) {
+        if (covered?.some(({ bounds }) => (
+          column >= bounds.columnStart && column <= bounds.columnEnd
+        ))) {
           continue
         }
         registerA11yCell(row, column)
@@ -2354,7 +2383,7 @@ export function UltiGridViewport<TValue = CellPrimitive, TMeta = unknown>(
         ))
       }
     }
-    for (const merge of merges) {
+    for (const { merge, bounds: fragmentBounds } of fragments) {
       const ownsMergedContent = mergeFragments.ownerByMerge.get(merge.id) === pane.id
       if (ownsMergedContent) registerA11yCell(merge.rowStart, merge.columnStart)
       cells.push(renderSurface(
@@ -2363,6 +2392,7 @@ export function UltiGridViewport<TValue = CellPrimitive, TMeta = unknown>(
         true,
         `merge:${merge.id}`,
         ownsMergedContent,
+        fragmentBounds,
       ))
     }
 
@@ -2475,16 +2505,17 @@ export function UltiGridViewport<TValue = CellPrimitive, TMeta = unknown>(
     merged: boolean,
     key: string,
     renderCustomContent = true,
+    visualBounds = bounds,
   ) => {
     const row = bounds.rowStart
     const column = bounds.columnStart
     const selected = rangeIntersects(bounds, renderedSelection)
     const active = Boolean(renderedSelection && renderedActiveCell
       && isAddressInRange(renderedActiveCell, bounds))
-    const columnStartOffset = columnOffset(bounds.columnStart)
-    const rowStartOffset = rowOffset(bounds.rowStart)
-    const width = columnOffset(bounds.columnEnd + 1) - columnStartOffset
-    const height = rowOffset(bounds.rowEnd + 1) - rowStartOffset
+    const columnStartOffset = columnOffset(visualBounds.columnStart)
+    const rowStartOffset = rowOffset(visualBounds.rowStart)
+    const width = columnOffset(visualBounds.columnEnd + 1) - columnStartOffset
+    const height = rowOffset(visualBounds.rowEnd + 1) - rowStartOffset
     const paneOwnsTrailingCorner = bounds.rowEnd >= pane.rows.start
       && bounds.rowEnd <= pane.rows.end
       && bounds.columnEnd >= pane.columns.start
@@ -3058,6 +3089,18 @@ function intersectWindow(range: IndexWindow, minimum: number, maximum: number): 
 
 function countWindow(range: IndexWindow): number {
   return range.start < 0 ? 0 : range.end - range.start + 1
+}
+
+export function resolveViewportSnapshotWindow(
+  visibleWindow: IndexWindow,
+  count: number,
+  fixedStart: number,
+  fixedEnd: number,
+): IndexWindow {
+  if (visibleWindow.start >= 0 || count <= 0 || fixedStart + fixedEnd !== count) {
+    return visibleWindow
+  }
+  return { start: 0, end: count - 1 }
 }
 
 function cachedAxisOffset(axis: Axis, cache: Map<number, number>, index: number): number {

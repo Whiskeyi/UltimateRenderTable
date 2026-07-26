@@ -12,6 +12,7 @@ import {
   type UltiGridViewportApi,
   type UltiGridViewportProps,
 } from '../src/core/viewportTypes'
+import { resolveViewportSnapshotWindow } from '../src/core/UltiGridViewport'
 
 describe('Core selection bounds', () => {
   it('resolves full, intersected, null, and empty selectable regions', () => {
@@ -215,6 +216,21 @@ describe('Core selection bounds', () => {
       bottom: true,
       left: true,
     })
+  })
+
+  it('reports the full index range when every item is frozen', () => {
+    expect(resolveViewportSnapshotWindow(
+      { start: -1, end: -1 },
+      4,
+      1,
+      3,
+    )).toEqual({ start: 0, end: 3 })
+    expect(resolveViewportSnapshotWindow(
+      { start: 4, end: 8 },
+      20,
+      1,
+      1,
+    )).toEqual({ start: 4, end: 8 })
   })
 
   it('keeps whole-row and whole-column selections independent of merged cells', () => {
