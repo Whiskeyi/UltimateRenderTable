@@ -53,6 +53,21 @@ export interface InsightCellIcon {
   label?: string
 }
 
+/**
+ * Mutable on purpose. Create one per rendered cell, or reuse a scratch instance
+ * when adapting values to the core table. evaluateInto resets every field.
+ */
+export interface ConditionalFormatResult extends InsightCellTextStyle {
+  backgroundColor: string | undefined
+  icon: InsightCellIcon | undefined
+  dataBarColor: string | undefined
+  dataBarOffset: number
+  dataBarRatio: number
+  dataBarNegative: boolean
+  matchedRuleCount: number
+  lastMatchedRuleId: string | undefined
+}
+
 export interface InsightCellComponentProps<TRow = unknown, TValue = InsightCellValue>
   extends InsightCellContext<TRow, TValue> {
   displayValue: string
@@ -87,7 +102,7 @@ export interface InsightCellProps<TRow = unknown, TValue = InsightCellValue>
   embedded?: boolean
   displayValue?: string
   visualStyle?: InsightCellVisualStyle
-  conditionalFormat?: import('./conditionalFormatting.js').ConditionalFormatResult
+  conditionalFormat?: ConditionalFormatResult
   image?: InsightCellImage
   icon?: InsightCellIcon
   iconResolver?: (icon: InsightCellIcon) => ReactNode

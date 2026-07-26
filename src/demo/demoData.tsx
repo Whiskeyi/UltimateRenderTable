@@ -5,8 +5,9 @@ import type {
   RowMeta,
 } from '@ultigrid/insight'
 import { translate, type Locale, type MessageKey } from '../i18n'
-import type { StudioScenario } from '../studio'
 import { DEMO_CURRENCY } from './currency'
+
+export type DemoDataScenario = 'analysis' | 'conditional'
 
 export interface DemoRow {
   id: number
@@ -50,9 +51,7 @@ const AVATARS = [
   svgAvatar('GY', '#e0f4f5', '#25747a'),
 ]
 
-const COLUMN_WIDTHS: Record<StudioScenario | 'conditional', ReadonlyMap<number, number>> = {
-  intro: new Map(),
-  gallery: new Map(),
+const COLUMN_WIDTHS: Record<DemoDataScenario, ReadonlyMap<number, number>> = {
   analysis: new Map([
     [0, 200], [1, 160], [2, 148], [3, 108], [4, 136],
     [5, 116], [6, 116], [7, 148], [8, 160], [9, 166],
@@ -63,7 +62,6 @@ const COLUMN_WIDTHS: Record<StudioScenario | 'conditional', ReadonlyMap<number, 
     [0, 182], [1, 164], [2, 142], [3, 132], [4, 126],
     [5, 132], [6, 152], [7, 136], [8, 190],
   ]),
-  spreadsheet: new Map(),
 }
 
 const TREE_COLUMN_WIDTHS = new Map([
@@ -81,7 +79,7 @@ export interface DemoRowSourceOptions extends DemoViewOptions {
 }
 
 export function getDemoColumnWidths(
-  scenario: StudioScenario | 'conditional',
+  scenario: DemoDataScenario,
   options: DemoViewOptions = {},
 ): ReadonlyMap<number, number> {
   if (scenario === 'analysis' && options.treeEnabled) return TREE_COLUMN_WIDTHS
@@ -245,7 +243,7 @@ function branchPositionForLeaf(position: number): number {
 }
 
 export function createDemoColumnGetter(
-  scenario: StudioScenario | 'conditional',
+  scenario: DemoDataScenario,
   locale: Locale,
   options: DemoViewOptions = {},
 ) {
@@ -259,7 +257,7 @@ export function createDemoColumnGetter(
 }
 
 function createScenarioColumns(
-  scenario: StudioScenario | 'conditional',
+  scenario: DemoDataScenario,
   locale: Locale,
   options: DemoViewOptions,
 ): InsightColumn<DemoRow>[] {

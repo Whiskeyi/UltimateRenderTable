@@ -64,6 +64,7 @@ Coordinates are zero-based and range ends are inclusive. Keep getters, size maps
 | Rendering | `renderCell`, styles, classes, metadata, per-cell ARIA hooks, `contentVersion` cache invalidation |
 | Merging | explicit, non-overlapping `MergedCellRange` rectangles, including horizontal and arbitrary 2D ranges |
 | Interaction | bounded controlled/uncontrolled selection, keyboard navigation, TSV copy, direction-locked touch scrolling, tap-safe selection, drag handle, safe-area copy action |
+| Pure utilities | `parseTSV`, `rangeToTSV`, `rangesIntersect`, `moveTabAddress` |
 | Theme | `themeColor` controls selection and focus accents; CSS variables remain available for deeper styling |
 | Imperative API | scroll, selection, effective width reads, and copy through `UltiGridViewportApi` / `ApiRef` |
 | Observation | `onViewportChange`, `ViewportSnapshot` |
@@ -73,7 +74,16 @@ Only these package paths are supported:
 - `@ultigrid/core`
 - `@ultigrid/core/style.css`
 
-Axis, virtualizer, MergeIndex, and selection helpers are internal implementations.
+Axis, virtualizer, MergeIndex, and all unlisted selection/navigation helpers are internal implementations. Application integrations should import the four supported pure utilities from the package root:
+
+```ts
+import {
+  moveTabAddress,
+  parseTSV,
+  rangesIntersect,
+  rangeToTSV,
+} from '@ultigrid/core'
+```
 
 Core exposes the grid/treegrid root, a logical rowgroup/row structure, cross-pane `aria-owns`, cell/header roles and indices, merged spans, multi-selection state, and rendered active-cell linkage. Tree level/expanded/busy state belongs to the logical row, while absolutely positioned cells remain in their visual frozen panes. Chromium Accessibility Tree coverage verifies that ownership contract; production integrations should still test their target NVDA/VoiceOver versions. When Tab traversal reaches a selection boundary, Core releases native browser traversal; focusable descendants such as tree controls and column-resize separators remain in that tab order.
 

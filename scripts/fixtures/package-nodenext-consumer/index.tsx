@@ -1,4 +1,8 @@
 import {
+  moveTabAddress,
+  parseTSV,
+  rangesIntersect,
+  rangeToTSV,
   UltiGridViewport,
   type ApiRef,
   type UltiGridViewportApi,
@@ -43,6 +47,21 @@ const insightProps = {
 
 type InsightApiHasNoViewport = 'viewport' extends keyof UltiGridInsightApi ? never : true
 const insightApiHasNoViewport: InsightApiHasNoViewport = true
+export const parsedClipboard = parseTSV('North\t42')
+export const serializedRange = rangeToTSV(
+  { rowStart: 0, rowEnd: 0, columnStart: 0, columnEnd: 1 },
+  ({ column }) => column === 0 ? 'North' : 42,
+)
+export const rangesOverlap = rangesIntersect(
+  { rowStart: 0, rowEnd: 1, columnStart: 0, columnEnd: 1 },
+  { rowStart: 1, rowEnd: 2, columnStart: 1, columnEnd: 2 },
+)
+export const nextTabAddress = moveTabAddress(
+  { row: 0, column: 0 },
+  { rowStart: 0, rowEnd: 1, columnStart: 0, columnEnd: 1 },
+  false,
+  () => undefined,
+)
 
 export const coreElement = <UltiGridViewport {...coreProps} apiRef={coreApiRef} />
 export const insightElement = <UltiGridInsight {...insightProps} apiRef={insightApiRef} />

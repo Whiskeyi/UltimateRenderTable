@@ -1,4 +1,14 @@
 export { UltiGridViewport } from './UltiGridViewport.js'
+export { moveTabAddress } from './keyboardNavigation.js'
+export {
+  parseTSV,
+  rangesIntersect,
+  rangeToTSV,
+} from './selection.js'
+export type {
+  CellPosition,
+  TSVOptions,
+} from './selection.js'
 export type {
   ApiRef,
   AutoSizeOptions,

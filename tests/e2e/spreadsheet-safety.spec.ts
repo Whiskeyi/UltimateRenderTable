@@ -40,6 +40,21 @@ test('preserves workbook edits across scenarios and localizes only untouched see
   await expect(formulaBar).toHaveValue('pending draft')
 })
 
+test('resynchronizes pending edits after restoring from the back-forward cache', async ({ page }) => {
+  await openSpreadsheet(page)
+  const formulaBar = page.locator('.spreadsheet-formula-input')
+
+  await expect(formulaBar).toHaveValue('462400')
+  await formulaBar.fill('500000')
+  await page.evaluate(() => {
+    window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: true }))
+    window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }))
+  })
+
+  await expect(page.getByRole('gridcell', { name: /500,000$/ })).toBeVisible()
+  await expect(page.getByRole('button', { name: '撤销', exact: true })).toBeEnabled()
+})
+
 test('rejects overflow paste and never deletes a cut when clipboard writing fails', async ({ page }) => {
   await openSpreadsheet(page)
   const formulaBar = page.locator('.spreadsheet-formula-input')

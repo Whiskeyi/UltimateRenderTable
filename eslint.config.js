@@ -61,4 +61,72 @@ export default tseslint.config(
       'react-hooks/exhaustive-deps': 'off',
     },
   },
+  {
+    files: ['src/core/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': ['error', {
+        patterns: [{
+          regex: '^(?:\\.\\.?/)+(?:bi|demo|i18n|studio|utils)(?:/|$)|^(?:\\.\\.?/)+(?:App|main)(?:\\.[^/]+)?$|^@ultigrid/insight(?:/|$)',
+          message: 'Core must not depend on Insight, Studio, or demo application modules.',
+        }],
+      }],
+    },
+  },
+  {
+    files: ['src/bi/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': ['error', {
+        patterns: [
+          {
+            regex: '^(?:\\.\\.?/)+(?:core|demo|i18n|studio|utils)(?:/|$)|^(?:\\.\\.?/)+(?:App|main)(?:\\.[^/]+)?$',
+            message: 'Insight must use the public @ultigrid/core entry and stay independent of Studio/demo modules.',
+          },
+          {
+            regex: '^@ultigrid/core/(?!style\\.css$)',
+            message: 'Insight may only use the @ultigrid/core root and its public style.css entry.',
+          },
+        ],
+      }],
+    },
+  },
+  {
+    files: [
+      'src/App.tsx',
+      'src/demo/**/*.{ts,tsx}',
+      'src/i18n/**/*.{ts,tsx}',
+      'src/studio/**/*.{ts,tsx}',
+      'src/utils/**/*.{ts,tsx}',
+    ],
+    rules: {
+      'no-restricted-imports': ['error', {
+        patterns: [
+          {
+            regex: '^(?:\\.\\.?/)+(?:core|bi)(?:/|$)',
+            message: 'Application layers must consume Core and Insight through their package entry points.',
+          },
+          {
+            regex: '^@ultigrid/(?:core|insight)/(?!style\\.css$)',
+            message: 'Only the package root and public style.css entry are supported.',
+          },
+        ],
+      }],
+    },
+  },
+  {
+    files: ['src/main.tsx'],
+    rules: {
+      'no-restricted-imports': ['error', {
+        patterns: [
+          {
+            regex: '^(?!.*\\.css$)(?:\\.\\.?/)+(?:core|bi)(?:/|$)',
+            message: 'The app entry may assemble source CSS but must consume TypeScript APIs through package roots.',
+          },
+          {
+            regex: '^@ultigrid/(?:core|insight)/(?!style\\.css$)',
+            message: 'Only the package root and public style.css entry are supported.',
+          },
+        ],
+      }],
+    },
+  },
 )

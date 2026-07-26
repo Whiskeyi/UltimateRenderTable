@@ -40,8 +40,8 @@ export interface FlatRowModelOptions<TRow> {
 
 export class FlatRowModel<TRow> implements InsightRowModel<TRow> {
   readonly kind = 'flat'
-  version = 0
 
+  private _version = 0
   private rows: readonly TRow[]
   private readonly resolveId: (row: TRow, index: number) => InsightRowId
   private idToIndex: Map<InsightRowId, number> | undefined
@@ -50,6 +50,10 @@ export class FlatRowModel<TRow> implements InsightRowModel<TRow> {
   constructor(rows: readonly TRow[], options: FlatRowModelOptions<TRow>) {
     this.rows = rows
     this.resolveId = options.getRowId
+  }
+
+  get version(): number {
+    return this._version
   }
 
   getRowCount(): number {
@@ -86,8 +90,8 @@ export class FlatRowModel<TRow> implements InsightRowModel<TRow> {
   replaceRows(rows: readonly TRow[]): void {
     this.rows = rows
     this.idToIndex = undefined
-    this.version += 1
-    this.emit({ version: this.version, type: 'reset', count: rows.length })
+    this._version += 1
+    this.emit({ version: this._version, type: 'reset', count: rows.length })
   }
 
   subscribe(listener: RowModelListener): () => void {
@@ -142,8 +146,8 @@ interface TreeNode<TRow> {
  */
 export class TreeRowModel<TRow> implements InsightRowModel<TRow> {
   readonly kind = 'tree'
-  version = 0
 
+  private _version = 0
   private readonly options: TreeRowModelOptions<TRow>
   private nodesById = new Map<InsightRowId, TreeNode<TRow>>()
   private readonly listeners = new Set<RowModelListener>()
@@ -154,6 +158,10 @@ export class TreeRowModel<TRow> implements InsightRowModel<TRow> {
   constructor(rows: readonly TRow[], options: TreeRowModelOptions<TRow>) {
     this.options = options
     this.reset(rows, false)
+  }
+
+  get version(): number {
+    return this._version
   }
 
   getRowCount(): number {
@@ -282,8 +290,8 @@ export class TreeRowModel<TRow> implements InsightRowModel<TRow> {
     this.visible = nextRoots.slice()
 
     if (notify) {
-      this.version += 1
-      this.emit({ version: this.version, type: 'reset', count: this.visible.length })
+      this._version += 1
+      this.emit({ version: this._version, type: 'reset', count: this.visible.length })
     }
 
     // Eagerly requested expansion still uses the same lazy-loading path.
@@ -459,8 +467,8 @@ export class TreeRowModel<TRow> implements InsightRowModel<TRow> {
   }
 
   private bump(change: Omit<RowModelChange, 'version'>): void {
-    this.version += 1
-    this.emit({ ...change, version: this.version })
+    this._version += 1
+    this.emit({ ...change, version: this._version })
   }
 
   private emit(change: RowModelChange): void {

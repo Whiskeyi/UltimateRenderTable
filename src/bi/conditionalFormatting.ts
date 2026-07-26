@@ -1,8 +1,11 @@
 import type {
+  ConditionalFormatResult,
   InsightCellIcon,
   InsightCellTextStyle,
   InsightCellContext,
 } from './types.js'
+
+export type { ConditionalFormatResult } from './types.js'
 
 export type ConditionalOperator =
   | 'always'
@@ -84,21 +87,6 @@ export type ConditionalFormatRule<TRow = unknown, TValue = unknown> =
   | IconConditionalRule<TRow, TValue>
   | ColorScaleConditionalRule<TRow, TValue>
   | DataBarConditionalRule<TRow, TValue>
-
-/**
- * Mutable on purpose. Create one per rendered cell, or reuse a scratch instance
- * when adapting values to the core table. evaluateInto resets every field.
- */
-export interface ConditionalFormatResult extends InsightCellTextStyle {
-  backgroundColor: string | undefined
-  icon: InsightCellIcon | undefined
-  dataBarColor: string | undefined
-  dataBarOffset: number
-  dataBarRatio: number
-  dataBarNegative: boolean
-  matchedRuleCount: number
-  lastMatchedRuleId: string | undefined
-}
 
 export interface CompiledConditionalFormatter<TRow = unknown, TValue = unknown> {
   readonly ruleCount: number

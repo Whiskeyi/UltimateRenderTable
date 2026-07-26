@@ -4,7 +4,6 @@ import type {
   SpreadsheetCellValue,
   SpreadsheetNumberFormat,
 } from './spreadsheetModel'
-import { setSpreadsheetSessionDirty } from './spreadsheetSession'
 
 export type HorizontalAlign = 'left' | 'center' | 'right'
 
@@ -49,7 +48,7 @@ export type WorkbookAction =
   | { type: 'undo' }
   | { type: 'redo' }
 
-type SheetFactory = (locale: Locale) => WorksheetSnapshot
+export type SheetFactory = (locale: Locale) => WorksheetSnapshot
 
 interface SerializedSnapshot {
   values: [string, SpreadsheetCellValue][]
@@ -69,10 +68,6 @@ interface SerializedWorkbook {
 }
 
 const HISTORY_LIMIT = 50
-const SESSION_STORAGE_KEY = 'ultigrid.spreadsheet-workbook.v1'
-let memoryHistory: WorkbookHistory | null = null
-let pendingPersistence: WorkbookHistory | null = null
-let persistenceTimer: number | null = null
 
 export function createWorkbookHistory(
   locale: Locale,
@@ -159,56 +154,6 @@ export function localizeWorkbookHistory(
     present: localizeSnapshot(state.present),
     future: state.future.map(localizeSnapshot),
     revision: state.revision + 1,
-  }
-}
-
-export function initializeWorkbookHistory(
-  locale: Locale,
-  createInitialSheet: SheetFactory,
-): WorkbookHistory {
-  if (typeof window === 'undefined') return createWorkbookHistory(locale, createInitialSheet)
-  let restored = memoryHistory
-  if (!restored) {
-    try {
-      const serialized = window.sessionStorage.getItem(SESSION_STORAGE_KEY)
-      restored = serialized ? deserializeWorkbookHistory(serialized) : null
-    } catch {
-      restored = null
-    }
-  }
-  const history = localizeWorkbookHistory(
-    restored ?? createWorkbookHistory(locale, createInitialSheet),
-    locale,
-    createInitialSheet,
-  )
-  memoryHistory = history
-  setSpreadsheetSessionDirty(history.dirty)
-  return history
-}
-
-/**
- * Keeps the complete history in module memory and schedules a compact
- * current-snapshot write for same-tab reload recovery. Undo/redo history is
- * intentionally not serialized to sessionStorage.
- */
-export function persistWorkbookHistory(
-  history: WorkbookHistory,
-  options: { immediate?: boolean } = {},
-): void {
-  memoryHistory = history
-  setSpreadsheetSessionDirty(history.dirty)
-  if (typeof window === 'undefined') return
-  pendingPersistence = history
-  if (options.immediate) {
-    cancelScheduledPersistence()
-    flushPendingPersistence()
-    return
-  }
-  if (persistenceTimer === null) {
-    persistenceTimer = window.setTimeout(() => {
-      persistenceTimer = null
-      flushPendingPersistence()
-    }, 120)
   }
 }
 
@@ -308,27 +253,4 @@ function isMergedRange(value: unknown): value is MergedCellRange {
     && Number.isSafeInteger(range.columnStart) && Number.isSafeInteger(range.columnEnd)
     && range.rowStart! >= 0 && range.columnStart! >= 0
     && range.rowEnd! >= range.rowStart! && range.columnEnd! >= range.columnStart!
-}
-
-function flushPendingPersistence(): void {
-  const history = pendingPersistence
-  pendingPersistence = null
-  if (!history || typeof window === 'undefined') return
-  try {
-    // Full undo/redo remains in module memory across scenario switches. Reload
-    // recovery stores one compact snapshot so formatting a large range does
-    // not synchronously stringify dozens of near-identical worksheets.
-    window.sessionStorage.setItem(
-      SESSION_STORAGE_KEY,
-      serializeWorkbookHistory({ ...history, past: [], future: [] }),
-    )
-  } catch {
-    // Session recovery is best-effort; module memory remains authoritative.
-  }
-}
-
-function cancelScheduledPersistence(): void {
-  if (persistenceTimer === null || typeof window === 'undefined') return
-  window.clearTimeout(persistenceTimer)
-  persistenceTimer = null
 }

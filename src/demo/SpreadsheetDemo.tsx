@@ -1,33 +1,4 @@
 import {
-  AlignCenter,
-  AlignLeft,
-  AlignRight,
-  Bold,
-  Check,
-  ChevronDown,
-  ClipboardPaste,
-  Combine,
-  Copy,
-  DollarSign,
-  Eraser,
-  FunctionSquare,
-  Grid2X2,
-  Italic,
-  Minus,
-  PanelTop,
-  PaintBucket,
-  Percent,
-  Plus,
-  Redo2,
-  RotateCcw,
-  Scissors,
-  Sigma,
-  Underline,
-  Undo2,
-  WrapText,
-  X,
-} from 'lucide-react'
-import {
   useCallback,
   useEffect,
   useMemo,
@@ -36,14 +7,12 @@ import {
   type ClipboardEvent as ReactClipboardEvent,
   type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
-  type ReactNode,
 } from 'react'
 import {
   UltiGridInsight,
   defineInsightColumn,
   type CellAddress,
   type CellRange,
-  type InsightCellVisualStyle,
   type InsightColumnDefinition,
   type InsightViewportSnapshot,
   type MergedCellRange,
@@ -52,71 +21,67 @@ import {
   type UltiGridInsightApi,
   type UltiGridInsightLocaleText,
 } from '@ultigrid/insight'
-import { rangeToTSV, rangesIntersect } from '../core/selection.js'
-import { moveTabAddress } from '../core/keyboardNavigation.js'
-import { translate, type Locale, type MessageKey } from '../i18n'
+import { moveTabAddress } from '@ultigrid/core'
+import { translate, type Locale } from '../i18n'
 import { writeTextToClipboard } from '../utils/clipboard'
+import {
+  getEffectiveFormat,
+  resolveCellStyle,
+  statusTone,
+  summarizeFormats,
+} from './spreadsheetFormatting'
 import {
   calculateSelectionStats,
   cellKey,
   columnName,
   createSpreadsheetEvaluator,
   formatSpreadsheetValue,
-  parseCellInput,
   parseClipboardMatrix,
   parseSelectionLabel,
   selectionLabel,
-  translateFormulaReferences,
+  type FormulaName,
   type SpreadsheetCellValue,
-  type SpreadsheetNumberFormat,
 } from './spreadsheetModel'
 import {
-  initializeWorkbookHistory,
-  localizeWorkbookHistory,
-  persistWorkbookHistory,
-  workbookReducer,
+  applyCellInput,
+  applyFormatPatch,
+  applyPaste,
+  clearWorksheetRange,
+  createCopyPayload,
+  planFunctionInsertion,
+  toggleMergedRange,
+  type CopyPayload,
+} from './spreadsheetOperations'
+import {
   type CellFormat,
-  type HorizontalAlign,
-  type WorkbookAction,
   type WorkbookHistory,
   type WorksheetSnapshot,
 } from './spreadsheetWorkbook'
+import { SpreadsheetFormulaBar } from './SpreadsheetFormulaBar'
+import {
+  SpreadsheetMenu,
+  SpreadsheetRibbon,
+  type RibbonColorMenu,
+  type RibbonTab,
+} from './SpreadsheetRibbon'
+import { SpreadsheetStatusBar } from './SpreadsheetStatusBar'
+import { useSpreadsheetSelection } from './useSpreadsheetSelection'
+import { useWorkbookHistory } from './useWorkbookHistory'
 
 interface SheetRow {
   id: number
   index: number
 }
 
-type RibbonTab = 'home' | 'formulas' | 'view'
-type RibbonColorMenu = 'text' | 'fill'
 type EditorNavigation = 'stay' | 'up' | 'down' | 'left' | 'right'
-type FormulaName = 'SUM' | 'AVERAGE' | 'MIN' | 'MAX' | 'COUNT'
-
-interface ResolvedCellFormat {
-  fontFamily: string
-  fontSize: number
-  bold: boolean
-  italic: boolean
-  underline: boolean
-  color: string
-  fill: string
-  align: HorizontalAlign
-  wrap: boolean
-  numberFormat: SpreadsheetNumberFormat
-}
 
 interface CellEditorState extends CellAddress {
   draft: string
   selectAll: boolean
 }
 
-interface InternalClipboard {
+interface InternalClipboard extends CopyPayload {
   mode: 'copy' | 'cut'
-  text: string
-  values: SpreadsheetCellValue[][]
-  formats: (CellFormat | undefined)[][]
-  source: CellAddress
-  sourceRange: CellRange
   sourceRevision: number
 }
 
@@ -150,20 +115,6 @@ const SHEET_ROWS: readonly SheetRow[] = Array.from({ length: ROW_COUNT }, (_, in
 const BASE_COLUMN_WIDTHS = new Map<number, number>([
   [0, 118], [1, 156], [2, 118], [3, 116], [4, 116], [5, 128], [6, 102], [7, 112],
 ])
-const COLOR_SWATCHES = [
-  '#202124', '#ffffff', '#217346', '#0f6cbd', '#5b5fc7', '#b42318', '#d97706',
-  '#e7f4eb', '#e8f1fb', '#f0edff', '#fff4ce', '#fde7e9', '#f2f4f2', '#d9e1f2',
-] as const
-const FORMAT_KEYS: readonly (keyof ResolvedCellFormat)[] = [
-  'fontFamily', 'fontSize', 'bold', 'italic', 'underline', 'color', 'fill', 'align', 'wrap', 'numberFormat',
-]
-const FORMULA_LABEL_KEYS = {
-  SUM: 'spreadsheet.formula.sum',
-  AVERAGE: 'spreadsheet.formula.average',
-  MIN: 'spreadsheet.formula.min',
-  MAX: 'spreadsheet.formula.max',
-  COUNT: 'spreadsheet.formula.count',
-} satisfies Record<FormulaName, MessageKey>
 
 export function SpreadsheetDemo({
   locale,
@@ -171,20 +122,17 @@ export function SpreadsheetDemo({
   localeText,
   onViewportChange,
 }: SpreadsheetDemoProps) {
-  const [history, setHistory] = useState<WorkbookHistory>(
-    () => initializeWorkbookHistory(locale, createInitialSheet),
-  )
-  const sheet = history.present
-  const [selection, setSelection] = useState<CellRange | null>(DEFAULT_SELECTION)
-  const [selectionKind, setSelectionKind] = useState<SelectionKind>('cell')
-  const [selectionEndpoints, setSelectionEndpoints] = useState<SelectionEndpoints>({
-    anchor: { row: DEFAULT_SELECTION.rowStart, column: DEFAULT_SELECTION.columnStart },
-    focus: { row: DEFAULT_SELECTION.rowEnd, column: DEFAULT_SELECTION.columnEnd },
-  })
-  const [activeCell, setActiveCell] = useState<CellAddress>({
-    row: DEFAULT_SELECTION.rowStart,
-    column: DEFAULT_SELECTION.columnStart,
-  })
+  const {
+    selection,
+    selectionKind,
+    selectionEndpoints,
+    activeCell,
+    activeCellRef,
+    select: commitSelection,
+    setViewportSelection,
+    setViewportActiveCell,
+    setViewportEndpoints,
+  } = useSpreadsheetSelection(DEFAULT_SELECTION)
   const [activeTab, setActiveTab] = useState<RibbonTab>('home')
   const [openColorMenu, setOpenColorMenu] = useState<RibbonColorMenu | null>(null)
   const [cutSelection, setCutSelection] = useState<CellRange | null>(null)
@@ -205,28 +153,42 @@ export function SpreadsheetDemo({
   const clipboardOperationRef = useRef(0)
   const ribbonRef = useRef<HTMLDivElement>(null)
   const formulaInputRef = useRef<HTMLInputElement>(null)
-  const historyRef = useRef(history)
-  const activeCellRef = useRef(activeCell)
   const editorRef = useRef(editor)
   const formulaDraftRef = useRef(formulaDraft)
   const formulaEditingRef = useRef(formulaEditing)
   const headerSelectionRef = useRef<HeaderSelectionSession | null>(null)
-  historyRef.current = history
-  activeCellRef.current = activeCell
   formulaDraftRef.current = formulaDraft
   formulaEditingRef.current = formulaEditing
 
-  const dispatch = useCallback((action: WorkbookAction) => {
-    const next = workbookReducer(historyRef.current, action)
-    if (next === historyRef.current) return
+  const clearPendingCut = useCallback(() => {
     if (clipboardRef.current?.mode === 'cut') {
       clipboardRef.current = null
       setCutSelection(null)
     }
-    historyRef.current = next
-    persistWorkbookHistory(next)
-    setHistory(next)
   }, [])
+
+  const resolvePendingSnapshot = useCallback((current: WorkbookHistory) => {
+    const pendingEditor = editorRef.current
+    let snapshot = pendingEditor
+      ? applyCellInput(current.present, pendingEditor, pendingEditor.draft)
+      : current.present
+    if (formulaEditingRef.current) {
+      snapshot = applyCellInput(
+        snapshot,
+        activeCellRef.current,
+        formulaDraftRef.current,
+      )
+    }
+    return snapshot
+  }, [activeCellRef])
+
+  const { history, historyRef, dispatch } = useWorkbookHistory({
+    locale,
+    createInitialSheet,
+    resolvePendingSnapshot,
+    onBeforeHistoryChange: clearPendingCut,
+  })
+  const sheet = history.present
 
   const evaluator = useMemo(() => createSpreadsheetEvaluator(sheet.values, {
     rowCount: ROW_COUNT,
@@ -248,53 +210,8 @@ export function SpreadsheetDemo({
     if (!nameEditing) setNameDraft(selectionLabel(selection))
   }, [nameEditing, selection])
 
-  useEffect(() => {
-    const next = localizeWorkbookHistory(historyRef.current, locale, createInitialSheet)
-    if (next === historyRef.current) return
-    if (clipboardRef.current?.mode === 'cut') {
-      clipboardRef.current = null
-      setCutSelection(null)
-    }
-    historyRef.current = next
-    persistWorkbookHistory(next)
-    setHistory(next)
-  }, [locale])
-
-  useEffect(() => {
-    const persistPendingEdits = () => {
-      const current = historyRef.current
-      let snapshot = consumePendingEditor(current.present, editorRef.current)
-      if (formulaEditingRef.current) {
-        snapshot = applyDraftToSnapshot(
-          snapshot,
-          activeCellRef.current,
-          formulaDraftRef.current,
-        )
-      }
-      const next = snapshot === current.present
-        ? current
-        : workbookReducer(current, { type: 'commit', snapshot })
-      historyRef.current = next
-      persistWorkbookHistory(next, { immediate: true })
-      return next
-    }
-    const handlePageHide = () => {
-      persistPendingEdits()
-    }
-    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
-      const current = persistPendingEdits()
-      if (!current.dirty) return
-      event.preventDefault()
-      event.returnValue = ''
-    }
-    window.addEventListener('pagehide', handlePageHide)
-    window.addEventListener('beforeunload', handleBeforeUnload)
-    return () => {
-      persistPendingEdits()
-      window.removeEventListener('pagehide', handlePageHide)
-      window.removeEventListener('beforeunload', handleBeforeUnload)
-      if (feedbackTimerRef.current !== null) window.clearTimeout(feedbackTimerRef.current)
-    }
+  useEffect(() => () => {
+    if (feedbackTimerRef.current !== null) window.clearTimeout(feedbackTimerRef.current)
   }, [])
 
   useEffect(() => {
@@ -350,13 +267,10 @@ export function SpreadsheetDemo({
   ) => {
     const nextActive = active ?? { row: next.rowStart, column: next.columnStart }
     editorRef.current = null
-    setSelection(next)
-    setSelectionKind(kind)
-    setSelectionEndpoints(endpoints ?? createSelectionEndpoints(next, nextActive, kind))
-    setActiveCell(nextActive)
+    commitSelection(next, nextActive, kind, endpoints)
     setEditor(null)
     if (scroll) apiRef.current?.scrollToCell(nextActive, 'auto')
-  }, [apiRef])
+  }, [apiRef, commitSelection])
 
   const commitSnapshot = useCallback((snapshot: WorksheetSnapshot) => {
     dispatch({ type: 'commit', snapshot })
@@ -367,19 +281,9 @@ export function SpreadsheetDemo({
     restoreFocus = true,
   ) => {
     if (!selection) return
-    const nextFormats = new Map(sheet.formats)
-    let changed = false
-    forEachRangeCell(selection, (row, column) => {
-      const key = cellKey(row, column)
-      const current = nextFormats.get(key) ?? {}
-      const next = { ...current, ...patch }
-      if (!shallowEqualFormat(current, next)) {
-        nextFormats.set(key, next)
-        changed = true
-      }
-    })
-    if (changed) {
-      commitSnapshot({ ...sheet, formats: nextFormats })
+    const snapshot = applyFormatPatch(sheet, selection, patch)
+    if (snapshot !== sheet) {
+      commitSnapshot(snapshot)
       notify(translate(locale, 'spreadsheet.feedback.formatted'))
     }
     if (restoreFocus) restoreGridFocus()
@@ -387,13 +291,9 @@ export function SpreadsheetDemo({
 
   const clearFormats = useCallback(() => {
     if (!selection) return
-    const nextFormats = new Map(sheet.formats)
-    let changed = false
-    forEachRangeCell(selection, (row, column) => {
-      if (nextFormats.delete(cellKey(row, column))) changed = true
-    })
-    if (changed) {
-      commitSnapshot({ ...sheet, formats: nextFormats })
+    const snapshot = clearWorksheetRange(sheet, selection, 'formats')
+    if (snapshot !== sheet) {
+      commitSnapshot(snapshot)
       notify(translate(locale, 'spreadsheet.feedback.formatCleared'))
     }
     restoreGridFocus()
@@ -401,32 +301,23 @@ export function SpreadsheetDemo({
 
   const clearContents = useCallback((clearFormatting = false) => {
     if (!selection) return
-    const nextValues = new Map(sheet.values)
-    const nextFormats = clearFormatting ? new Map(sheet.formats) : sheet.formats
-    let changed = false
-    forEachRangeCell(selection, (row, column) => {
-      const key = cellKey(row, column)
-      if (nextValues.delete(key)) changed = true
-      if (clearFormatting && nextFormats.delete(key)) changed = true
-    })
-    if (changed) {
-      commitSnapshot({ ...sheet, values: nextValues, formats: nextFormats })
+    const snapshot = clearWorksheetRange(
+      sheet,
+      selection,
+      clearFormatting ? 'all' : 'contents',
+    )
+    if (snapshot !== sheet) {
+      commitSnapshot(snapshot)
       notify(translate(locale, 'spreadsheet.feedback.cleared'))
     }
     restoreGridFocus()
   }, [commitSnapshot, locale, notify, restoreGridFocus, selection, sheet])
 
   const commitCellInput = useCallback((address: CellAddress, draft: string) => {
-    const nextValue = parseCellInput(draft)
-    const key = cellKey(address.row, address.column)
     const currentSheet = historyRef.current.present
-    const currentValue = currentSheet.values.get(key) ?? ''
-    if (Object.is(currentValue, nextValue)) return
-    const nextValues = new Map(currentSheet.values)
-    if (nextValue === '') nextValues.delete(key)
-    else nextValues.set(key, nextValue)
-    commitSnapshot({ ...currentSheet, values: nextValues })
-  }, [commitSnapshot])
+    const snapshot = applyCellInput(currentSheet, address, draft)
+    if (snapshot !== currentSheet) commitSnapshot(snapshot)
+  }, [commitSnapshot, historyRef])
 
   const moveAfterEdit = useCallback((address: CellAddress, direction: EditorNavigation) => {
     if (direction === 'stay') return
@@ -473,7 +364,7 @@ export function SpreadsheetDemo({
     if (!formulaEditingRef.current) return
     commitCellInput(activeCellRef.current, formulaDraftRef.current)
     setFormulaEditing(false)
-  }, [commitCellInput])
+  }, [activeCellRef, commitCellInput])
 
   const finishEditingBeforeHeaderSelection = useCallback(() => {
     const pendingEditor = editorRef.current
@@ -500,18 +391,17 @@ export function SpreadsheetDemo({
       editorRef.current = null
       commitCellInput(pendingEditor, pendingEditor.draft)
     }
-    setSelection(next)
-    setSelectionKind(kind)
+    setViewportSelection(next, kind)
     setEditor(null)
-  }, [commitCellInput])
+  }, [commitCellInput, setViewportSelection])
 
   const handleActiveCellChange = useCallback((next: CellAddress | null) => {
-    if (next) setActiveCell(next)
-  }, [])
+    setViewportActiveCell(next)
+  }, [setViewportActiveCell])
 
   const handleSelectionEndpointsChange = useCallback((next: SelectionEndpoints | null) => {
-    if (next) setSelectionEndpoints(next)
-  }, [])
+    setViewportEndpoints(next)
+  }, [setViewportEndpoints])
 
   const commitNameBox = useCallback((focusGrid = false) => {
     const next = parseSelectionLabel(nameDraft, ROW_COUNT, COLUMN_COUNT)
@@ -523,14 +413,17 @@ export function SpreadsheetDemo({
     }
     selectRange(next)
     if (focusGrid) restoreGridFocus()
-  }, [locale, nameDraft, notify, restoreGridFocus, selectRange])
+  }, [activeCellRef, locale, nameDraft, notify, restoreGridFocus, selectRange])
 
   const copySelection = useCallback(async (cut = false) => {
     if (!selection) return
     const operationId = clipboardOperationRef.current + 1
     clipboardOperationRef.current = operationId
     const sourceSelection = { ...selection }
-    let currentSheet = consumePendingEditor(historyRef.current.present, editorRef.current)
+    const pendingEditor = editorRef.current
+    let currentSheet = pendingEditor
+      ? applyCellInput(historyRef.current.present, pendingEditor, pendingEditor.draft)
+      : historyRef.current.present
     if (currentSheet !== historyRef.current.present) {
       editorRef.current = null
       setEditor(null)
@@ -538,27 +431,13 @@ export function SpreadsheetDemo({
       currentSheet = historyRef.current.present
     }
     const sourceRevision = historyRef.current.revision
-    const currentEvaluator = createSpreadsheetEvaluator(currentSheet.values, {
+    const payload = createCopyPayload(currentSheet, sourceSelection, locale, {
       rowCount: ROW_COUNT,
       columnCount: COLUMN_COUNT,
-      maxFormulaCells: ROW_COUNT * COLUMN_COUNT,
     })
-    const text = rangeToTSV(sourceSelection, ({ row, column }) => {
-      const value = currentEvaluator.getValue(row, column)
-      const format = getEffectiveFormat(row, column, currentSheet.formats.get(cellKey(row, column)))
-      return formatSpreadsheetValue(value, format.numberFormat, locale)
-    })
-    const values = rangeToMatrix(sourceSelection, (row, column) => (
-      currentSheet.values.get(cellKey(row, column)) ?? ''
-    ))
-    const formats = rangeToMatrix(sourceSelection, (row, column) => currentSheet.formats.get(cellKey(row, column)))
     const internalClipboard: InternalClipboard = {
+      ...payload,
       mode: 'copy',
-      text,
-      values,
-      formats,
-      source: { row: sourceSelection.rowStart, column: sourceSelection.columnStart },
-      sourceRange: sourceSelection,
       sourceRevision,
     }
     if (cut) {
@@ -570,7 +449,7 @@ export function SpreadsheetDemo({
     }
     let systemClipboardWritten = false
     try {
-      await writeTextToClipboard(text)
+      await writeTextToClipboard(payload.text)
       systemClipboardWritten = true
     } catch {
       // The internal clipboard still makes toolbar paste deterministic.
@@ -599,7 +478,7 @@ export function SpreadsheetDemo({
         ? 'spreadsheet.feedback.copied'
         : 'spreadsheet.feedback.copiedInternal'))
     restoreGridFocus()
-  }, [commitSnapshot, locale, notify, restoreGridFocus, selection])
+  }, [commitSnapshot, historyRef, locale, notify, restoreGridFocus, selection])
 
   const pasteMatrix = useCallback((
     matrix: SpreadsheetCellValue[][],
@@ -608,10 +487,10 @@ export function SpreadsheetDemo({
     source?: CellAddress,
     cutClipboard?: InternalClipboard,
   ) => {
-    const currentSheet = consumePendingEditor(historyRef.current.present, editorRef.current)
-    const matrixWidth = matrix.reduce((maximum, row) => Math.max(maximum, row.length), 0)
-    const cellCount = matrix.length * matrixWidth
-    if (matrix.length === 0 || matrixWidth === 0) return
+    const pendingEditor = editorRef.current
+    const currentSheet = pendingEditor
+      ? applyCellInput(historyRef.current.present, pendingEditor, pendingEditor.draft)
+      : historyRef.current.present
     if (
       cutClipboard
       && (
@@ -625,107 +504,53 @@ export function SpreadsheetDemo({
       restoreGridFocus()
       return
     }
-    if (cellCount > MAX_PASTE_CELLS) {
-      notify(translate(locale, 'spreadsheet.feedback.pasteTooLarge'))
-      return
-    }
-    const rowEnd = target.row + matrix.length - 1
-    const columnEnd = target.column + matrixWidth - 1
-    if (rowEnd >= ROW_COUNT || columnEnd >= COLUMN_COUNT) {
-      notify(translate(locale, 'spreadsheet.feedback.pasteOutOfBounds', {
-        rows: matrix.length,
-        columns: matrixWidth,
-        address: selectionLabel(singleCellRange(target)),
-      }))
-      return
-    }
-    const targetRange: CellRange = {
-      rowStart: target.row,
-      rowEnd,
-      columnStart: target.column,
-      columnEnd,
-    }
-    const cutMerges = cutClipboard
-      ? currentSheet.mergedCells.filter((merge) => rangesIntersect(merge, cutClipboard.sourceRange))
-      : []
-    if (
-      cutClipboard
-      && cutMerges.some((merge) => !rangeContainsRange(cutClipboard.sourceRange, merge))
-    ) {
-      notify(translate(locale, 'spreadsheet.feedback.mergeConflict'))
-      return
-    }
-    const retainedMerges = cutClipboard
-      ? currentSheet.mergedCells.filter((merge) => !cutMerges.includes(merge))
-      : currentSheet.mergedCells
-    const movedMerges = cutClipboard
-      ? cutMerges.map((merge) => ({
-          rowStart: target.row + merge.rowStart - cutClipboard.sourceRange.rowStart,
-          rowEnd: target.row + merge.rowEnd - cutClipboard.sourceRange.rowStart,
-          columnStart: target.column + merge.columnStart - cutClipboard.sourceRange.columnStart,
-          columnEnd: target.column + merge.columnEnd - cutClipboard.sourceRange.columnStart,
-        }))
-      : []
-    const intersectingMerge = retainedMerges.find((merge) => rangesIntersect(merge, targetRange))
-    if (intersectingMerge && !(
-      matrix.length === 1 && matrixWidth === 1 &&
-      target.row === intersectingMerge.rowStart && target.column === intersectingMerge.columnStart
-    )) {
-      notify(translate(locale, 'spreadsheet.feedback.mergeConflict'))
+    const result = applyPaste(currentSheet, {
+      values: matrix,
+      formats: sourceFormats,
+      target,
+      copySource: source,
+      cutSourceRange: cutClipboard?.sourceRange,
+      bounds: { rowCount: ROW_COUNT, columnCount: COLUMN_COUNT },
+      maxCells: MAX_PASTE_CELLS,
+    })
+    if (!result.ok) {
+      if (result.reason === 'empty') return
+      notify(translate(
+        locale,
+        result.reason === 'too-large'
+          ? 'spreadsheet.feedback.pasteTooLarge'
+          : result.reason === 'out-of-bounds'
+            ? 'spreadsheet.feedback.pasteOutOfBounds'
+            : 'spreadsheet.feedback.mergeConflict',
+        result.reason === 'out-of-bounds'
+          ? {
+              rows: result.rows,
+              columns: result.columns,
+              address: selectionLabel(singleCellRange(target)),
+            }
+          : undefined,
+      ))
       return
     }
     editorRef.current = null
     setEditor(null)
-    const nextValues = new Map(currentSheet.values)
-    const nextFormats = new Map(currentSheet.formats)
-    if (cutClipboard) {
-      forEachRangeCell(cutClipboard.sourceRange, (row, column) => {
-        const key = cellKey(row, column)
-        nextValues.delete(key)
-        nextFormats.delete(key)
-      })
-    }
-    for (let rowOffset = 0; rowOffset < matrix.length; rowOffset += 1) {
-      const targetRow = target.row + rowOffset
-      if (targetRow >= ROW_COUNT) break
-      const sourceRow = matrix[rowOffset] ?? []
-      for (let columnOffset = 0; columnOffset < matrixWidth; columnOffset += 1) {
-        const targetColumn = target.column + columnOffset
-        if (targetColumn >= COLUMN_COUNT) break
-        const key = cellKey(targetRow, targetColumn)
-        const sourceValue = sourceRow[columnOffset] ?? ''
-        const value = source
-          ? translateFormulaReferences(
-              sourceValue,
-              target.row - source.row,
-              target.column - source.column,
-              ROW_COUNT,
-              COLUMN_COUNT,
-            )
-          : sourceValue
-        if (value === '') nextValues.delete(key)
-        else nextValues.set(key, value)
-        if (sourceFormats) {
-          const format = sourceFormats[rowOffset]?.[columnOffset]
-          if (format) nextFormats.set(key, { ...format })
-          else nextFormats.delete(key)
-        }
-      }
-    }
     if (cutClipboard) {
       clipboardRef.current = null
       setCutSelection(null)
     }
-    commitSnapshot({
-      ...currentSheet,
-      values: nextValues,
-      formats: nextFormats,
-      mergedCells: cutClipboard ? [...retainedMerges, ...movedMerges] : currentSheet.mergedCells,
-    })
-    selectRange(targetRange)
-    notify(translate(locale, 'spreadsheet.feedback.pastedCount', { count: cellCount }))
+    commitSnapshot(result.snapshot)
+    selectRange(result.targetRange)
+    notify(translate(locale, 'spreadsheet.feedback.pastedCount', { count: result.cellCount }))
     restoreGridFocus()
-  }, [commitSnapshot, locale, notify, restoreGridFocus, selectRange])
+  }, [
+    activeCellRef,
+    commitSnapshot,
+    historyRef,
+    locale,
+    notify,
+    restoreGridFocus,
+    selectRange,
+  ])
 
   const pasteText = useCallback((text: string, target: CellAddress = activeCellRef.current) => {
     const internal = clipboardRef.current
@@ -739,7 +564,7 @@ export function SpreadsheetDemo({
       )
     }
     else pasteMatrix(parseClipboardMatrix(text), undefined, target)
-  }, [pasteMatrix])
+  }, [activeCellRef, pasteMatrix])
 
   const pasteFromToolbar = useCallback(async () => {
     const target = { ...activeCellRef.current }
@@ -757,102 +582,71 @@ export function SpreadsheetDemo({
       return
     }
     pasteText(text, target)
-  }, [locale, notify, pasteText])
+  }, [activeCellRef, locale, notify, pasteText])
 
   const toggleMerge = useCallback(() => {
     if (!selection) return
-    const exactIndex = sheet.mergedCells.findIndex((merge) => rangesEqual(merge, selection))
-    if (exactIndex >= 0) {
-      const mergedCells = sheet.mergedCells.filter((_, index) => index !== exactIndex)
-      commitSnapshot({ ...sheet, mergedCells })
-      notify(translate(locale, 'spreadsheet.feedback.unmerged'))
-      restoreGridFocus()
-      return
-    }
-    if (isSingleCellRange(selection)) {
-      notify(translate(locale, 'spreadsheet.feedback.mergeRange'))
-      return
-    }
-    if (sheet.mergedCells.some((merge) => rangesIntersect(merge, selection))) {
-      notify(translate(locale, 'spreadsheet.feedback.mergeConflict'))
-      return
-    }
-    let discardedValues = 0
-    forEachRangeCell(selection, (row, column) => {
-      if (row === selection.rowStart && column === selection.columnStart) return
-      if ((sheet.values.get(cellKey(row, column)) ?? '') !== '') discardedValues += 1
-    })
-    if (
-      discardedValues > 0
-      && !window.confirm(translate(locale, 'spreadsheet.confirm.merge', { count: discardedValues }))
-    ) {
-      restoreGridFocus()
-      return
-    }
-    const nextValues = new Map(sheet.values)
-    forEachRangeCell(selection, (row, column) => {
-      if (row !== selection.rowStart || column !== selection.columnStart) {
-        nextValues.delete(cellKey(row, column))
+    let result = toggleMergedRange(sheet, selection)
+    if (result.status === 'confirmation-required') {
+      if (!window.confirm(translate(locale, 'spreadsheet.confirm.merge', {
+        count: result.discardedValues,
+      }))) {
+        restoreGridFocus()
+        return
       }
-    })
-    commitSnapshot({
-      ...sheet,
-      values: nextValues,
-      mergedCells: [...sheet.mergedCells, { ...selection }],
-    })
-    const anchor = { row: selection.rowStart, column: selection.columnStart }
-    selectRange(singleCellRange(anchor), anchor)
-    notify(translate(locale, 'spreadsheet.feedback.merged'))
+      result = toggleMergedRange(sheet, selection, { allowDiscard: true })
+    }
+    if (result.status === 'rejected') {
+      notify(translate(
+        locale,
+        result.reason === 'single-cell'
+          ? 'spreadsheet.feedback.mergeRange'
+          : 'spreadsheet.feedback.mergeConflict',
+      ))
+      return
+    }
+    if (result.status !== 'changed') return
+    commitSnapshot(result.snapshot)
+    if (result.nextSelection && result.nextActiveCell) {
+      selectRange(result.nextSelection, result.nextActiveCell)
+    }
+    notify(translate(
+      locale,
+      result.mode === 'merged'
+        ? 'spreadsheet.feedback.merged'
+        : 'spreadsheet.feedback.unmerged',
+    ))
     restoreGridFocus()
   }, [commitSnapshot, locale, notify, restoreGridFocus, selectRange, selection, sheet])
 
   const insertFunction = useCallback((functionName: FormulaName) => {
     commitPendingFormulaDraft()
-    const readRawValue = (row: number, column: number) => (
-      historyRef.current.present.values.get(cellKey(row, column)) ?? ''
+    const plan = planFunctionInsertion(
+      historyRef.current.present,
+      selection,
+      activeCell,
+      functionName,
+      { rowCount: ROW_COUNT, columnCount: COLUMN_COUNT },
     )
-    const source = selection ?? singleCellRange(activeCell)
-    let target = activeCell
-    let formulaRange = source
-    let hasFormulaRange = true
-    if (!isSingleCellRange(source) && source.rowEnd < ROW_COUNT - 1) {
-      target = { row: source.rowEnd + 1, column: source.columnStart }
-    } else if (typeof readRawValue(activeCell.row, activeCell.column) === 'number') {
-      let startRow = activeCell.row
-      let endRow = activeCell.row
-      while (startRow > 0 && typeof readRawValue(startRow - 1, activeCell.column) === 'number') startRow -= 1
-      while (endRow < ROW_COUNT - 1 && typeof readRawValue(endRow + 1, activeCell.column) === 'number') endRow += 1
-      formulaRange = {
-        rowStart: startRow,
-        rowEnd: endRow,
-        columnStart: activeCell.column,
-        columnEnd: activeCell.column,
-      }
-      if (endRow < ROW_COUNT - 1) target = { row: endRow + 1, column: activeCell.column }
-    } else if (activeCell.row > 0 && typeof readRawValue(activeCell.row - 1, activeCell.column) === 'number') {
-      let startRow = activeCell.row - 1
-      while (startRow > 0 && typeof readRawValue(startRow - 1, activeCell.column) === 'number') startRow -= 1
-      formulaRange = {
-        rowStart: startRow,
-        rowEnd: activeCell.row - 1,
-        columnStart: activeCell.column,
-        columnEnd: activeCell.column,
-      }
-    } else {
-      hasFormulaRange = false
-    }
-    const formula = `=${functionName}(${hasFormulaRange ? selectionLabel(formulaRange) : ''})`
-    selectRange(singleCellRange(target), target)
-    setFormulaDraft(formula)
+    selectRange(singleCellRange(plan.target), plan.target)
+    setFormulaDraft(plan.formula)
     setFormulaEditing(true)
     setShowFormulaBar(true)
     notify(translate(locale, 'spreadsheet.feedback.formulaInserted'))
     window.requestAnimationFrame(() => {
       const input = formulaInputRef.current
       input?.focus()
-      input?.setSelectionRange(formula.length - 1, formula.length - 1)
+      input?.setSelectionRange(plan.formula.length - 1, plan.formula.length - 1)
     })
-  }, [activeCell, commitPendingFormulaDraft, locale, notify, selectRange, selection])
+  }, [
+    activeCell,
+    commitPendingFormulaDraft,
+    historyRef,
+    locale,
+    notify,
+    selectRange,
+    selection,
+  ])
 
   const beginFormulaEntry = useCallback(() => {
     commitPendingFormulaDraft()
@@ -868,7 +662,7 @@ export function SpreadsheetDemo({
       input?.focus()
       input?.setSelectionRange(draft.length, draft.length)
     })
-  }, [activeCell, commitPendingFormulaDraft])
+  }, [activeCell, commitPendingFormulaDraft, historyRef])
 
   const resetSheet = useCallback(() => {
     if (
@@ -902,7 +696,7 @@ export function SpreadsheetDemo({
     setEditor(null)
     notify(translate(locale, 'spreadsheet.feedback.undo'))
     restoreGridFocus()
-  }, [dispatch, locale, notify, restoreGridFocus])
+  }, [dispatch, historyRef, locale, notify, restoreGridFocus])
 
   const redo = useCallback(() => {
     const next = historyRef.current.future[0]
@@ -912,7 +706,7 @@ export function SpreadsheetDemo({
     setEditor(null)
     notify(translate(locale, 'spreadsheet.feedback.redo'))
     restoreGridFocus()
-  }, [dispatch, locale, notify, restoreGridFocus])
+  }, [dispatch, historyRef, locale, notify, restoreGridFocus])
 
   const applyHeaderSelection = useCallback((
     kind: HeaderSelectionSession['kind'],
@@ -970,6 +764,7 @@ export function SpreadsheetDemo({
     }
   }, [
     applyHeaderSelection,
+    activeCellRef,
     finishEditingBeforeHeaderSelection,
     restoreGridFocus,
     selectRange,
@@ -1002,7 +797,7 @@ export function SpreadsheetDemo({
     const target = { ...activeCellRef.current }
     event.preventDefault()
     pasteText(text, target)
-  }, [pasteText])
+  }, [activeCellRef, pasteText])
 
   const handleGridKeyDown = useCallback((event: ReactKeyboardEvent<HTMLDivElement>) => {
     if (isFormControl(event.target) || event.nativeEvent.isComposing) return
@@ -1086,19 +881,19 @@ export function SpreadsheetDemo({
     }
     if (command && key === 'b') {
       event.preventDefault()
-      const summary = summarizeFormats(selection, activeCell, sheet.formats)
+      const summary = summarizeFormats(selection ?? DEFAULT_SELECTION, activeCell, sheet.formats)
       applyFormat({ bold: summary.mixed.has('bold') || !summary.format.bold })
       return
     }
     if (command && key === 'i') {
       event.preventDefault()
-      const summary = summarizeFormats(selection, activeCell, sheet.formats)
+      const summary = summarizeFormats(selection ?? DEFAULT_SELECTION, activeCell, sheet.formats)
       applyFormat({ italic: summary.mixed.has('italic') || !summary.format.italic })
       return
     }
     if (command && key === 'u') {
       event.preventDefault()
-      const summary = summarizeFormats(selection, activeCell, sheet.formats)
+      const summary = summarizeFormats(selection ?? DEFAULT_SELECTION, activeCell, sheet.formats)
       applyFormat({ underline: summary.mixed.has('underline') || !summary.format.underline })
       return
     }
@@ -1179,7 +974,7 @@ export function SpreadsheetDemo({
   }, [])
 
   const formatSummary = useMemo(
-    () => summarizeFormats(selection, activeCell, sheet.formats),
+    () => summarizeFormats(selection ?? DEFAULT_SELECTION, activeCell, sheet.formats),
     [activeCell, selection, sheet.formats],
   )
   const activeFormat = formatSummary.format
@@ -1293,279 +1088,83 @@ export function SpreadsheetDemo({
       className={`spreadsheet-demo ${showFormulaBar ? '' : 'is-formula-hidden'}`}
       aria-label={translate(locale, 'scenario.spreadsheet')}
     >
-      <header className="spreadsheet-menu">
-        <span className="spreadsheet-book-mark"><Grid2X2 size={15} /> {translate(locale, 'spreadsheet.bookLabel')}</span>
-        <span className="spreadsheet-quick-access" role="group" aria-label={translate(locale, 'spreadsheet.group.history')}>
-          <ToolbarButton label={translate(locale, 'spreadsheet.undo')} disabled={history.past.length === 0} onClick={undo}><Undo2 size={14} /></ToolbarButton>
-          <ToolbarButton label={translate(locale, 'spreadsheet.redo')} disabled={history.future.length === 0} onClick={redo}><Redo2 size={14} /></ToolbarButton>
-        </span>
-        <div role="tablist" aria-label={translate(locale, 'spreadsheet.toolbar.tabs')}>
-          {(['home', 'formulas', 'view'] as const).map((tab) => (
-            <button
-              key={tab}
-              id={`spreadsheet-tab-${tab}`}
-              type="button"
-              role="tab"
-              aria-controls="spreadsheet-ribbon-panel"
-              aria-selected={activeTab === tab}
-              tabIndex={activeTab === tab ? 0 : -1}
-              className={activeTab === tab ? 'is-active' : undefined}
-              onClick={() => activateRibbonTab(tab)}
-              onKeyDown={(event) => handleRibbonTabKeyDown(event, tab)}
-            >
-              {translate(locale, `spreadsheet.tab.${tab}`)}
-            </button>
-          ))}
-        </div>
-        <span className="spreadsheet-autosave">
-          <i /> {feedback || translate(
-            locale,
-            history.dirty ? 'spreadsheet.unsaved' : 'spreadsheet.sessionReady',
-          )}
-        </span>
-        <span className="sr-only" role="status" aria-live="polite">{feedback}</span>
-      </header>
+      <SpreadsheetMenu
+        locale={locale}
+        activeTab={activeTab}
+        feedback={feedback}
+        dirty={history.dirty}
+        canUndo={history.past.length > 0}
+        canRedo={history.future.length > 0}
+        onUndo={undo}
+        onRedo={redo}
+        onActivateTab={activateRibbonTab}
+        onTabKeyDown={handleRibbonTabKeyDown}
+      />
 
-      <div
-        ref={ribbonRef}
-        id="spreadsheet-ribbon-panel"
-        className="spreadsheet-ribbon"
-        role="tabpanel"
-        aria-labelledby={`spreadsheet-tab-${activeTab}`}
-      >
-        <div
-          className="spreadsheet-ribbon-toolbar"
-          role="toolbar"
-          aria-label={translate(locale, 'spreadsheet.toolbar.label')}
-          onKeyDown={handleRibbonToolbarKeyDown}
-        >
-          {activeTab === 'home' ? (
-            <>
-              <RibbonGroup label={translate(locale, 'spreadsheet.group.clipboard')} className="spreadsheet-clipboard-group">
-                <ToolbarButton variant="large" label={translate(locale, 'spreadsheet.paste')} onClick={() => void pasteFromToolbar()}><ClipboardPaste /></ToolbarButton>
-                <div className="spreadsheet-clipboard-stack">
-                  <ToolbarButton variant="labeled" label={translate(locale, 'spreadsheet.cut')} onClick={() => void copySelection(true)}><Scissors /></ToolbarButton>
-                  <ToolbarButton variant="labeled" label={translate(locale, 'spreadsheet.copy')} onClick={() => void copySelection(false)}><Copy /></ToolbarButton>
-                </div>
-              </RibbonGroup>
-
-              <RibbonGroup label={translate(locale, 'spreadsheet.group.font')} className="spreadsheet-font-group">
-                <div className="spreadsheet-ribbon-control-row spreadsheet-font-select-row">
-                  <label>
-                    <span className="sr-only">{translate(locale, 'spreadsheet.font')}</span>
-                    <select
-                      value={mixed.has('fontFamily') ? '' : activeFormat.fontFamily}
-                      onChange={(event) => applyFormat({ fontFamily: event.target.value }, false)}
-                    >
-                      {mixed.has('fontFamily') ? <option value="">—</option> : null}
-                      <option>Aptos</option><option>Arial</option><option>Georgia</option><option>Menlo</option>
-                    </select>
-                    <ChevronDown />
-                  </label>
-                  <label className="spreadsheet-size-select">
-                    <span className="sr-only">{translate(locale, 'spreadsheet.fontSize')}</span>
-                    <select
-                      value={mixed.has('fontSize') ? '' : activeFormat.fontSize}
-                      onChange={(event) => applyFormat({ fontSize: Number(event.target.value) }, false)}
-                    >
-                      {mixed.has('fontSize') ? <option value="">—</option> : null}
-                      {[10, 11, 12, 14, 16, 18, 24].map((size) => <option key={size}>{size}</option>)}
-                    </select>
-                    <ChevronDown />
-                  </label>
-                </div>
-                <div className="spreadsheet-ribbon-control-row spreadsheet-font-command-row">
-                  <ToolbarButton label={translate(locale, 'spreadsheet.bold')} active={mixed.has('bold') ? 'mixed' : activeFormat.bold} onClick={() => applyFormat({ bold: mixed.has('bold') || !activeFormat.bold })}><Bold /></ToolbarButton>
-                  <ToolbarButton label={translate(locale, 'spreadsheet.italic')} active={mixed.has('italic') ? 'mixed' : activeFormat.italic} onClick={() => applyFormat({ italic: mixed.has('italic') || !activeFormat.italic })}><Italic /></ToolbarButton>
-                  <ToolbarButton label={translate(locale, 'spreadsheet.underline')} active={mixed.has('underline') ? 'mixed' : activeFormat.underline} onClick={() => applyFormat({ underline: mixed.has('underline') || !activeFormat.underline })}><Underline /></ToolbarButton>
-                  <ColorControl
-                    menuId="text"
-                    label={translate(locale, 'spreadsheet.textColor')}
-                    value={recentTextColor}
-                    selectedValue={mixed.has('color') ? undefined : activeFormat.color}
-                    open={openColorMenu === 'text'}
-                    onOpenChange={(open) => setOpenColorMenu(open ? 'text' : null)}
-                    onChange={(color) => {
-                      setRecentTextColor(color)
-                      applyFormat({ color })
-                    }}
-                    applyLabel={translate(locale, 'spreadsheet.color.apply', { color: recentTextColor })}
-                    paletteLabel={translate(locale, 'spreadsheet.color.palette', { target: translate(locale, 'spreadsheet.textColor') })}
-                  />
-                  <ColorControl
-                    fill
-                    menuId="fill"
-                    label={translate(locale, 'spreadsheet.fillColor')}
-                    value={recentFillColor}
-                    selectedValue={mixed.has('fill') ? undefined : activeFormat.fill}
-                    open={openColorMenu === 'fill'}
-                    onOpenChange={(open) => setOpenColorMenu(open ? 'fill' : null)}
-                    onChange={(fill) => {
-                      setRecentFillColor(fill)
-                      applyFormat({ fill })
-                    }}
-                    applyLabel={translate(locale, 'spreadsheet.fill.apply', { color: recentFillColor })}
-                    paletteLabel={translate(locale, 'spreadsheet.color.palette', { target: translate(locale, 'spreadsheet.fillColor') })}
-                  />
-                </div>
-              </RibbonGroup>
-
-              <RibbonGroup label={translate(locale, 'spreadsheet.group.alignment')} className="spreadsheet-alignment-group">
-                <div className="spreadsheet-ribbon-control-row">
-                  <ToolbarButton label={translate(locale, 'spreadsheet.alignLeft')} active={mixed.has('align') ? 'mixed' : activeFormat.align === 'left'} onClick={() => applyFormat({ align: 'left' })}><AlignLeft /></ToolbarButton>
-                  <ToolbarButton label={translate(locale, 'spreadsheet.alignCenter')} active={mixed.has('align') ? 'mixed' : activeFormat.align === 'center'} onClick={() => applyFormat({ align: 'center' })}><AlignCenter /></ToolbarButton>
-                  <ToolbarButton label={translate(locale, 'spreadsheet.alignRight')} active={mixed.has('align') ? 'mixed' : activeFormat.align === 'right'} onClick={() => applyFormat({ align: 'right' })}><AlignRight /></ToolbarButton>
-                </div>
-                <div className="spreadsheet-ribbon-control-row">
-                  <ToolbarButton label={translate(locale, 'spreadsheet.wrap')} active={mixed.has('wrap') ? 'mixed' : activeFormat.wrap} onClick={() => applyFormat({ wrap: mixed.has('wrap') || !activeFormat.wrap })}><WrapText /></ToolbarButton>
-                  <ToolbarButton variant="labeled" label={translate(locale, mergedSelection ? 'spreadsheet.unmerge' : 'spreadsheet.merge')} active={mergedSelection} onClick={toggleMerge}><Combine /></ToolbarButton>
-                </div>
-              </RibbonGroup>
-
-              <RibbonGroup label={translate(locale, 'spreadsheet.group.number')} className="spreadsheet-number-group">
-                <div className="spreadsheet-ribbon-control-row">
-                  <label className="spreadsheet-number-select">
-                    <span className="sr-only">{translate(locale, 'spreadsheet.numberFormat')}</span>
-                    <select
-                      aria-label={translate(locale, 'spreadsheet.numberFormat')}
-                      value={mixed.has('numberFormat') ? '' : activeFormat.numberFormat}
-                      onChange={(event) => {
-                        const numberFormat = event.target.value as SpreadsheetNumberFormat | ''
-                        if (numberFormat) applyFormat({ numberFormat }, false)
-                      }}
-                    >
-                      {mixed.has('numberFormat') ? <option value="">—</option> : null}
-                      <option value="general">{translate(locale, 'spreadsheet.numberFormat.general')}</option>
-                      <option value="number">{translate(locale, 'spreadsheet.numberFormat.number')}</option>
-                      <option value="currency">{translate(locale, 'spreadsheet.numberFormat.currency')}</option>
-                      <option value="percent">{translate(locale, 'spreadsheet.numberFormat.percent')}</option>
-                    </select>
-                    <ChevronDown />
-                  </label>
-                </div>
-                <div className="spreadsheet-ribbon-control-row">
-                  <ToolbarButton label={translate(locale, 'spreadsheet.currency')} onClick={() => applyFormat({ numberFormat: 'currency' })}><DollarSign /></ToolbarButton>
-                  <ToolbarButton label={translate(locale, 'spreadsheet.percent')} onClick={() => applyFormat({ numberFormat: 'percent' })}><Percent /></ToolbarButton>
-                  <ToolbarButton label={translate(locale, 'spreadsheet.number')} onClick={() => applyFormat({ numberFormat: 'number' })}><span className="spreadsheet-decimal-icon">.00</span></ToolbarButton>
-                </div>
-              </RibbonGroup>
-
-              <RibbonGroup label={translate(locale, 'spreadsheet.group.editing')} className="spreadsheet-editing-group">
-                <ToolbarButton variant="large" label={translate(locale, 'spreadsheet.clearFormat')} onClick={clearFormats}><Eraser /></ToolbarButton>
-                <ToolbarButton variant="large" label={translate(locale, 'spreadsheet.reset')} onClick={resetSheet}><RotateCcw /></ToolbarButton>
-              </RibbonGroup>
-            </>
-          ) : null}
-
-          {activeTab === 'formulas' ? (
-            <>
-              <RibbonGroup label={translate(locale, 'spreadsheet.formula.quick')} className="spreadsheet-formula-group">
-                {(['SUM', 'AVERAGE', 'MIN', 'MAX', 'COUNT'] as const).map((name) => (
-                  <button
-                    key={name}
-                    type="button"
-                    className="spreadsheet-function-button"
-                    onPointerDown={(event) => event.preventDefault()}
-                    onClick={() => insertFunction(name)}
-                  >
-                    <span className="spreadsheet-command-icon"><Sigma /></span>
-                    <span><strong>{name}</strong><small>{translate(locale, FORMULA_LABEL_KEYS[name])}</small></span>
-                  </button>
-                ))}
-              </RibbonGroup>
-              <p className="spreadsheet-ribbon-hint"><FunctionSquare size={17} /> {translate(locale, 'spreadsheet.formula.help')}</p>
-            </>
-          ) : null}
-
-          {activeTab === 'view' ? (
-            <>
-              <RibbonGroup label={translate(locale, 'spreadsheet.tab.view')} className="spreadsheet-view-group">
-                <ViewToggle active={showGridLines} icon={<Grid2X2 />} label={translate(locale, 'spreadsheet.view.gridlines')} onClick={() => {
-                  setShowGridLines((current) => !current)
-                  restoreGridFocus()
-                }} />
-                <ViewToggle active={freezeTop} icon={<PanelTop />} label={translate(locale, 'spreadsheet.view.freeze')} onClick={() => {
-                  setFreezeTop((current) => !current)
-                  restoreGridFocus()
-                }} />
-                <ViewToggle active={showFormulaBar} icon={<FunctionSquare />} label={translate(locale, 'spreadsheet.view.formulaBar')} onClick={() => {
-                  setShowFormulaBar((current) => !current)
-                  restoreGridFocus()
-                }} />
-              </RibbonGroup>
-              <RibbonGroup label={translate(locale, 'spreadsheet.view.zoom')} className="spreadsheet-zoom-group">
-                <ToolbarButton label={translate(locale, 'spreadsheet.view.zoomOut')} disabled={zoom <= 80} onClick={() => setZoom((current) => Math.max(80, current - 10))}><Minus /></ToolbarButton>
-                <input aria-label={translate(locale, 'spreadsheet.view.zoom')} type="range" min="80" max="140" step="10" value={zoom} onChange={(event) => setZoom(Number(event.target.value))} />
-                <output>{zoom}%</output>
-                <ToolbarButton label={translate(locale, 'spreadsheet.view.zoomIn')} disabled={zoom >= 140} onClick={() => setZoom((current) => Math.min(140, current + 10))}><Plus /></ToolbarButton>
-              </RibbonGroup>
-            </>
-          ) : null}
-        </div>
-      </div>
+      <SpreadsheetRibbon
+        locale={locale}
+        activeTab={activeTab}
+        ribbonRef={ribbonRef}
+        activeFormat={activeFormat}
+        mixed={mixed}
+        openColorMenu={openColorMenu}
+        recentTextColor={recentTextColor}
+        recentFillColor={recentFillColor}
+        mergedSelection={mergedSelection}
+        showGridLines={showGridLines}
+        freezeTop={freezeTop}
+        showFormulaBar={showFormulaBar}
+        zoom={zoom}
+        onToolbarKeyDown={handleRibbonToolbarKeyDown}
+        onPaste={pasteFromToolbar}
+        onCopy={copySelection}
+        onApplyFormat={applyFormat}
+        onOpenColorMenuChange={setOpenColorMenu}
+        onTextColorChange={(color) => {
+          setRecentTextColor(color)
+          applyFormat({ color })
+        }}
+        onFillColorChange={(fill) => {
+          setRecentFillColor(fill)
+          applyFormat({ fill })
+        }}
+        onToggleMerge={toggleMerge}
+        onClearFormats={clearFormats}
+        onReset={resetSheet}
+        onInsertFunction={insertFunction}
+        onToggleGridLines={() => {
+          setShowGridLines((current) => !current)
+          restoreGridFocus()
+        }}
+        onToggleFreezeTop={() => {
+          setFreezeTop((current) => !current)
+          restoreGridFocus()
+        }}
+        onToggleFormulaBar={() => {
+          setShowFormulaBar((current) => !current)
+          restoreGridFocus()
+        }}
+        onZoomChange={setZoom}
+      />
 
       {showFormulaBar ? (
-        <div className="spreadsheet-formula-bar">
-          <input
-            className="spreadsheet-name-box"
-            value={nameDraft}
-            aria-label={translate(locale, 'spreadsheet.nameBox')}
-            title={translate(locale, 'spreadsheet.nameBoxHint')}
-            onFocus={(event) => {
-              setNameEditing(true)
-              event.currentTarget.select()
-            }}
-            onChange={(event) => setNameDraft(event.target.value.toUpperCase())}
-            onBlur={() => commitNameBox(false)}
-            onKeyDown={(event) => {
-              event.stopPropagation()
-              if (event.key === 'Enter') {
-                event.preventDefault()
-                commitNameBox(true)
-              }
-              if (event.key === 'Escape') {
-                setNameDraft(selectionLabel(selection))
-                setNameEditing(false)
-                restoreGridFocus()
-              }
-            }}
-          />
-          <button type="button" className="spreadsheet-fx-button" title={translate(locale, 'spreadsheet.insertFunction')} aria-label={translate(locale, 'spreadsheet.insertFunction')} onPointerDown={(event) => event.preventDefault()} onClick={beginFormulaEntry}><FunctionSquare size={15} /></button>
-          <span className="spreadsheet-formula-actions" aria-hidden={!formulaEditing}>
-            <button type="button" disabled={!formulaEditing} aria-label={translate(locale, 'spreadsheet.cancelEdit')} onPointerDown={(event) => event.preventDefault()} onClick={cancelFormulaBar}><X size={14} /></button>
-            <button type="button" disabled={!formulaEditing} aria-label={translate(locale, 'spreadsheet.acceptEdit')} onPointerDown={(event) => event.preventDefault()} onClick={() => {
-              commitFormulaBar()
-              restoreGridFocus()
-            }}><Check size={14} /></button>
-          </span>
-          <input
-            ref={formulaInputRef}
-            className="spreadsheet-formula-input"
-            value={formulaDraft}
-            aria-label={translate(locale, 'spreadsheet.formulaBar')}
-            spellCheck={false}
-            onFocus={() => setFormulaEditing(true)}
-            onChange={(event) => {
-              setFormulaEditing(true)
-              setFormulaDraft(event.target.value)
-            }}
-            onBlur={() => {
-              if (formulaEditing) commitFormulaBar()
-            }}
-            onKeyDown={(event) => {
-              event.stopPropagation()
-              if (event.nativeEvent.isComposing) return
-              if (event.key === 'Enter') {
-                event.preventDefault()
-                commitFormulaBar(event.shiftKey ? 'up' : 'down')
-              }
-              if (event.key === 'Escape') {
-                event.preventDefault()
-                cancelFormulaBar()
-              }
-            }}
-          />
-        </div>
+        <SpreadsheetFormulaBar
+          locale={locale}
+          selection={selection}
+          nameDraft={nameDraft}
+          formulaDraft={formulaDraft}
+          formulaEditing={formulaEditing}
+          inputRef={formulaInputRef}
+          onNameEditingChange={setNameEditing}
+          onNameDraftChange={setNameDraft}
+          onCommitNameBox={commitNameBox}
+          onRestoreGridFocus={restoreGridFocus}
+          onBeginFormulaEntry={beginFormulaEntry}
+          onCancel={cancelFormulaBar}
+          onCommit={commitFormulaBar}
+          onFormulaEditingChange={setFormulaEditing}
+          onFormulaDraftChange={setFormulaDraft}
+        />
       ) : null}
 
       <div
@@ -1610,23 +1209,14 @@ export function SpreadsheetDemo({
         />
       </div>
 
-      <footer className="spreadsheet-sheet-tabs">
-        <span className="spreadsheet-sheet-tab">{translate(locale, 'spreadsheet.sheetName')}</span>
-        <span className="spreadsheet-active-address">{selectionLabel(selection)}</span>
-        {cutSelection ? (
-          <span className="spreadsheet-cut-status">
-            <Scissors size={11} aria-hidden="true" />
-            {translate(locale, 'spreadsheet.cutPendingStatus', { range: selectionLabel(cutSelection) })}
-          </span>
-        ) : null}
-        <span className="spreadsheet-status-spacer" />
-        <small>{sheetSummary}</small>
-        <span className="spreadsheet-footer-zoom">
-          <button type="button" aria-label={translate(locale, 'spreadsheet.view.zoomOut')} disabled={zoom <= 80} onClick={() => setZoom((current) => Math.max(80, current - 10))}><Minus size={12} /></button>
-          <output>{zoom}%</output>
-          <button type="button" aria-label={translate(locale, 'spreadsheet.view.zoomIn')} disabled={zoom >= 140} onClick={() => setZoom((current) => Math.min(140, current + 10))}><Plus size={12} /></button>
-        </span>
-      </footer>
+      <SpreadsheetStatusBar
+        locale={locale}
+        selection={selection}
+        cutSelection={cutSelection}
+        summary={sheetSummary}
+        zoom={zoom}
+        onZoomChange={setZoom}
+      />
     </section>
   )
 }
@@ -1698,265 +1288,6 @@ function CellEditor({
   )
 }
 
-function RibbonGroup({
-  label,
-  className = '',
-  children,
-}: {
-  label: string
-  className?: string
-  children: ReactNode
-}) {
-  return (
-    <div className={`spreadsheet-ribbon-group ${className}`.trim()} role="group" aria-label={label}>
-      <div className="spreadsheet-ribbon-group__content">{children}</div>
-      <small>{label}</small>
-    </div>
-  )
-}
-
-function ToolbarButton({
-  label,
-  active,
-  disabled = false,
-  variant = 'icon',
-  onClick,
-  children,
-}: {
-  label: string
-  active?: boolean | 'mixed'
-  disabled?: boolean
-  variant?: 'icon' | 'large' | 'labeled'
-  onClick: () => void
-  children: ReactNode
-}) {
-  const classes = [
-    'spreadsheet-command',
-    `spreadsheet-command--${variant}`,
-    active ? 'is-active' : '',
-    active === 'mixed' ? 'is-mixed' : '',
-  ].filter(Boolean).join(' ')
-  return (
-    <button
-      type="button"
-      className={classes}
-      aria-pressed={active === undefined ? undefined : active}
-      title={label}
-      aria-label={label}
-      disabled={disabled}
-      onPointerDown={(event) => event.preventDefault()}
-      onClick={onClick}
-    >
-      <span className="spreadsheet-command-icon" aria-hidden="true">{children}</span>
-      {variant === 'icon' ? null : <span className="spreadsheet-command-label">{label}</span>}
-    </button>
-  )
-}
-
-function ColorControl({
-  menuId,
-  label,
-  applyLabel,
-  paletteLabel,
-  value,
-  selectedValue,
-  fill = false,
-  open,
-  onOpenChange,
-  onChange,
-}: {
-  menuId: RibbonColorMenu
-  label: string
-  applyLabel: string
-  paletteLabel: string
-  value: string
-  selectedValue?: string
-  fill?: boolean
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  onChange: (value: string) => void
-}) {
-  const rootRef = useRef<HTMLDivElement>(null)
-  const triggerRef = useRef<HTMLButtonElement>(null)
-  const paletteRef = useRef<HTMLDivElement>(null)
-  const [palettePosition, setPalettePosition] = useState({ left: 8, top: 8 })
-  const paletteId = `spreadsheet-${menuId}-color-palette`
-  const normalizedSelectedValue = selectedValue?.toLowerCase()
-  const hasSelectedSwatch = COLOR_SWATCHES.some((color) => color === normalizedSelectedValue)
-
-  const updatePalettePosition = useCallback(() => {
-    const trigger = triggerRef.current
-    if (!trigger) return
-    const triggerBounds = trigger.getBoundingClientRect()
-    const paletteWidth = paletteRef.current?.offsetWidth ?? (window.innerWidth <= 600 ? 302 : 190)
-    const paletteHeight = paletteRef.current?.offsetHeight ?? (window.innerWidth <= 600 ? 158 : 74)
-    const left = Math.min(
-      Math.max(8, triggerBounds.left),
-      Math.max(8, window.innerWidth - paletteWidth - 8),
-    )
-    const below = triggerBounds.bottom + 4
-    const top = below + paletteHeight <= window.innerHeight - 8
-      ? below
-      : Math.max(8, triggerBounds.top - paletteHeight - 4)
-    setPalettePosition({ left, top })
-  }, [])
-
-  useEffect(() => {
-    if (!open) return
-    const handlePointerDown = (event: PointerEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) onOpenChange(false)
-    }
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return
-      event.preventDefault()
-      onOpenChange(false)
-      triggerRef.current?.focus()
-    }
-    updatePalettePosition()
-    document.addEventListener('pointerdown', handlePointerDown, true)
-    document.addEventListener('keydown', handleKeyDown)
-    document.addEventListener('scroll', updatePalettePosition, true)
-    window.addEventListener('resize', updatePalettePosition)
-    const frame = window.requestAnimationFrame(() => {
-      updatePalettePosition()
-      const selected = paletteRef.current?.querySelector<HTMLButtonElement>(
-        '[role="menuitemradio"][aria-checked="true"]',
-      )
-      const first = paletteRef.current?.querySelector<HTMLButtonElement>('[role="menuitemradio"]')
-      const focusTarget = selected ?? first
-      focusTarget?.focus()
-    })
-    return () => {
-      window.cancelAnimationFrame(frame)
-      document.removeEventListener('pointerdown', handlePointerDown, true)
-      document.removeEventListener('keydown', handleKeyDown)
-      document.removeEventListener('scroll', updatePalettePosition, true)
-      window.removeEventListener('resize', updatePalettePosition)
-    }
-  }, [onOpenChange, open, updatePalettePosition])
-
-  const handlePaletteKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
-    if (
-      event.key !== 'ArrowRight'
-      && event.key !== 'ArrowLeft'
-      && event.key !== 'ArrowDown'
-      && event.key !== 'ArrowUp'
-      && event.key !== 'Home'
-      && event.key !== 'End'
-    ) return
-    const items = [...event.currentTarget.querySelectorAll<HTMLButtonElement>(
-      '[role="menuitemradio"]',
-    )]
-    const currentIndex = items.indexOf(document.activeElement as HTMLButtonElement)
-    const columnCount = window.getComputedStyle(event.currentTarget)
-      .gridTemplateColumns.split(/\s+/).filter(Boolean).length
-    const horizontalDelta = event.key === 'ArrowRight' ? 1 : -1
-    const verticalDelta = event.key === 'ArrowDown' ? columnCount : -columnCount
-    const nextIndex = event.key === 'Home'
-      ? 0
-      : event.key === 'End'
-        ? items.length - 1
-        : event.key === 'ArrowRight' || event.key === 'ArrowLeft'
-          ? (Math.max(0, currentIndex) + horizontalDelta + items.length) % items.length
-          : (Math.max(0, currentIndex) + verticalDelta + items.length) % items.length
-    event.preventDefault()
-    event.stopPropagation()
-    items[nextIndex]?.focus()
-  }
-
-  return (
-    <div ref={rootRef} className={`spreadsheet-color-control ${open ? 'is-open' : ''}`}>
-      <button
-        type="button"
-        className="spreadsheet-color-apply"
-        aria-label={applyLabel}
-        title={applyLabel}
-        onPointerDown={(event) => event.preventDefault()}
-        onClick={() => onChange(value)}
-      >
-        <span className="spreadsheet-command-icon" aria-hidden="true">
-          {fill ? <PaintBucket /> : <span className="spreadsheet-font-color">A</span>}
-        </span>
-        <i aria-hidden="true" style={{ backgroundColor: value }} />
-      </button>
-      <button
-        ref={triggerRef}
-        type="button"
-        className="spreadsheet-color-menu-trigger"
-        aria-label={paletteLabel}
-        title={paletteLabel}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        aria-controls={paletteId}
-        onClick={() => {
-          if (!open) updatePalettePosition()
-          onOpenChange(!open)
-        }}
-      >
-        <ChevronDown aria-hidden="true" />
-      </button>
-      {open ? (
-        <div
-          ref={paletteRef}
-          id={paletteId}
-          className="spreadsheet-color-palette"
-          role="menu"
-          aria-label={label}
-          style={palettePosition}
-          onKeyDown={handlePaletteKeyDown}
-        >
-          {COLOR_SWATCHES.map((color, index) => {
-            const selected = normalizedSelectedValue === color
-            return (
-              <button
-                key={color}
-                type="button"
-                role="menuitemradio"
-                aria-checked={selected}
-                tabIndex={selected || (!hasSelectedSwatch && index === 0) ? 0 : -1}
-                aria-label={`${label} ${color}`}
-                style={{ backgroundColor: color }}
-                onClick={() => {
-                  onChange(color)
-                  onOpenChange(false)
-                }}
-              />
-            )
-          })}
-        </div>
-      ) : null}
-    </div>
-  )
-}
-
-function ViewToggle({
-  active,
-  icon,
-  label,
-  onClick,
-}: {
-  active: boolean
-  icon: ReactNode
-  label: string
-  onClick: () => void
-}) {
-  return (
-    <button
-      type="button"
-      className={`spreadsheet-view-toggle ${active ? 'is-active' : ''}`}
-      aria-pressed={active}
-      onPointerDown={(event) => event.preventDefault()}
-      onClick={onClick}
-    >
-      <span className="spreadsheet-command-icon" aria-hidden="true">{icon}</span>
-      <span>{label}</span>
-      <span className="spreadsheet-view-toggle__check" aria-hidden="true">
-        <Check size={13} style={{ visibility: active ? 'visible' : 'hidden' }} />
-      </span>
-    </button>
-  )
-}
-
 function createInitialSheet(locale: Locale): WorksheetSnapshot {
   return {
     values: createInitialValues(locale),
@@ -1967,34 +1298,6 @@ function createInitialSheet(locale: Locale): WorksheetSnapshot {
     ],
     editedValueKeys: new Set(),
   }
-}
-
-function consumePendingEditor(
-  sheet: WorksheetSnapshot,
-  editor: CellEditorState | null,
-): WorksheetSnapshot {
-  if (!editor) return sheet
-  const key = cellKey(editor.row, editor.column)
-  const value = parseCellInput(editor.draft)
-  if (Object.is(sheet.values.get(key) ?? '', value)) return sheet
-  const values = new Map(sheet.values)
-  if (value === '') values.delete(key)
-  else values.set(key, value)
-  return { ...sheet, values }
-}
-
-function applyDraftToSnapshot(
-  sheet: WorksheetSnapshot,
-  address: CellAddress,
-  draft: string,
-): WorksheetSnapshot {
-  const key = cellKey(address.row, address.column)
-  const value = parseCellInput(draft)
-  if (Object.is(sheet.values.get(key) ?? '', value)) return sheet
-  const values = new Map(sheet.values)
-  if (value === '') values.delete(key)
-  else values.set(key, value)
-  return { ...sheet, values }
 }
 
 function createInitialValues(locale: Locale): Map<string, SpreadsheetCellValue> {
@@ -2054,128 +1357,12 @@ function createInitialFormats(): Map<string, CellFormat> {
   ])
 }
 
-function getEffectiveFormat(row: number, column: number, format?: CellFormat): ResolvedCellFormat {
-  return {
-    fontFamily: format?.fontFamily ?? 'Aptos',
-    fontSize: format?.fontSize ?? 12,
-    bold: format?.bold ?? false,
-    italic: format?.italic ?? false,
-    underline: format?.underline ?? false,
-    color: format?.color ?? (row > 14 ? '#5f6368' : '#202124'),
-    fill: format?.fill ?? '#ffffff',
-    align: format?.align ?? (column >= 3 && column <= 6 ? 'right' : 'left'),
-    wrap: format?.wrap ?? false,
-    numberFormat: format?.numberFormat ?? defaultNumberFormat(row, column),
-  }
-}
-
-function summarizeFormats(
-  selection: CellRange | null,
-  activeCell: CellAddress,
-  formats: ReadonlyMap<string, CellFormat>,
-) {
-  const range = selection ?? DEFAULT_SELECTION
-  const base = rangeContainsAddress(range, activeCell)
-    ? activeCell
-    : { row: range.rowStart, column: range.columnStart }
-  const format = getEffectiveFormat(
-    base.row,
-    base.column,
-    formats.get(cellKey(base.row, base.column)),
-  )
-  const mixed = new Set<keyof ResolvedCellFormat>()
-  forEachRangeCell(range, (row, column) => {
-    const candidate = getEffectiveFormat(row, column, formats.get(cellKey(row, column)))
-    for (const key of FORMAT_KEYS) {
-      if (candidate[key] !== format[key]) mixed.add(key)
-    }
-  })
-  return { format, mixed }
-}
-
-function resolveCellStyle(
-  row: number,
-  column: number,
-  value: SpreadsheetCellValue,
-  format: ResolvedCellFormat,
-  scale: number,
-): InsightCellVisualStyle {
-  const style: InsightCellVisualStyle = {
-    color: format.color,
-    backgroundColor: format.fill,
-    fontFamily: `${format.fontFamily}, Inter, ui-sans-serif, system-ui, sans-serif`,
-    fontSize: Math.max(8, format.fontSize * scale),
-    fontWeight: format.bold ? 700 : undefined,
-    fontStyle: format.italic ? 'italic' : undefined,
-    textDecoration: format.underline ? 'underline' : undefined,
-    horizontalAlign: format.align,
-    wrap: format.wrap,
-    paddingInline: 8,
-  }
-  if (row >= 2 && row <= 13 && column === 6 && typeof value === 'number') {
-    style.color = value < 0 ? '#b42318' : '#18794e'
-    style.fontWeight = 650
-  }
-  return style
-}
-
-function defaultNumberFormat(row: number, column: number): SpreadsheetNumberFormat {
-  if (row >= 2 && column >= 3 && column <= 4) return 'currency'
-  if (row >= 2 && column >= 5 && column <= 6) return 'percent'
-  return 'general'
-}
-
-function statusTone(value: string): 'track' | 'ahead' | 'watch' {
-  const normalized = value.toLowerCase()
-  if (normalized.includes('ahead') || normalized.includes('超预期')) return 'ahead'
-  if (normalized.includes('watch') || normalized.includes('关注') || normalized.includes('风险')) return 'watch'
-  return 'track'
-}
-
-function forEachRangeCell(range: CellRange, callback: (row: number, column: number) => void) {
-  for (let row = range.rowStart; row <= range.rowEnd; row += 1) {
-    for (let column = range.columnStart; column <= range.columnEnd; column += 1) callback(row, column)
-  }
-}
-
-function rangeToMatrix<T>(range: CellRange, getValue: (row: number, column: number) => T): T[][] {
-  return Array.from({ length: range.rowEnd - range.rowStart + 1 }, (_, rowOffset) => (
-    Array.from({ length: range.columnEnd - range.columnStart + 1 }, (_, columnOffset) => (
-      getValue(range.rowStart + rowOffset, range.columnStart + columnOffset)
-    ))
-  ))
-}
-
 function singleCellRange(address: CellAddress): CellRange {
   return {
     rowStart: address.row,
     rowEnd: address.row,
     columnStart: address.column,
     columnEnd: address.column,
-  }
-}
-
-function createSelectionEndpoints(
-  range: CellRange,
-  active: CellAddress,
-  kind: SelectionKind,
-): SelectionEndpoints {
-  if (kind === 'column') {
-    return {
-      anchor: { row: active.row, column: range.columnStart },
-      focus: { row: active.row, column: range.columnEnd },
-    }
-  }
-  if (kind === 'row') {
-    return {
-      anchor: { row: range.rowStart, column: active.column },
-      focus: { row: range.rowEnd, column: active.column },
-    }
-  }
-  if (kind === 'sheet') return { anchor: active, focus: active }
-  return {
-    anchor: { row: range.rowStart, column: range.columnStart },
-    focus: { row: range.rowEnd, column: range.columnEnd },
   }
 }
 
@@ -2222,18 +1409,9 @@ function resolveHeaderSelectionActive(
   return preferred
 }
 
-function isSingleCellRange(range: CellRange): boolean {
-  return range.rowStart === range.rowEnd && range.columnStart === range.columnEnd
-}
-
 function rangesEqual(left: CellRange, right: CellRange): boolean {
   return left.rowStart === right.rowStart && left.rowEnd === right.rowEnd
     && left.columnStart === right.columnStart && left.columnEnd === right.columnEnd
-}
-
-function rangeContainsRange(outer: CellRange, inner: CellRange): boolean {
-  return inner.rowStart >= outer.rowStart && inner.rowEnd <= outer.rowEnd
-    && inner.columnStart >= outer.columnStart && inner.columnEnd <= outer.columnEnd
 }
 
 function rangeContainsAddress(range: CellRange, address: CellAddress): boolean {
@@ -2303,10 +1481,4 @@ function isFormControl(target: EventTarget | null): boolean {
 
 function isColumnResizeHandle(target: EventTarget | null): boolean {
   return target instanceof Element && Boolean(target.closest('.ultigrid-column-resize-handle'))
-}
-
-function shallowEqualFormat(left: CellFormat, right: CellFormat): boolean {
-  return Object.keys({ ...left, ...right }).every((key) => (
-    left[key as keyof CellFormat] === right[key as keyof CellFormat]
-  ))
 }

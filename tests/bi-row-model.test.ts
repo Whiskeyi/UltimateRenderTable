@@ -7,6 +7,34 @@ interface Row {
 }
 
 describe('BI row models', () => {
+  it('exposes versions through getter-only properties while preserving notifications', () => {
+    const flatModel = new FlatRowModel([{ id: 'a' }], { getRowId: (row) => row.id })
+    const treeModel = new TreeRowModel<Row>([{ id: 'root' }], {
+      getRowId: (row) => row.id,
+    })
+    const flatVersions: number[] = []
+    const treeVersions: number[] = []
+    flatModel.subscribe((change) => flatVersions.push(change.version))
+    treeModel.subscribe((change) => treeVersions.push(change.version))
+
+    expect(Object.getOwnPropertyDescriptor(FlatRowModel.prototype, 'version')?.get)
+      .toEqual(expect.any(Function))
+    expect(Object.getOwnPropertyDescriptor(FlatRowModel.prototype, 'version')?.set).toBeUndefined()
+    expect(Object.getOwnPropertyDescriptor(TreeRowModel.prototype, 'version')?.get)
+      .toEqual(expect.any(Function))
+    expect(Object.getOwnPropertyDescriptor(TreeRowModel.prototype, 'version')?.set).toBeUndefined()
+    expect(Reflect.set(flatModel, 'version', 99)).toBe(false)
+    expect(Reflect.set(treeModel, 'version', 99)).toBe(false)
+
+    flatModel.replaceRows([{ id: 'b' }])
+    treeModel.replaceRoots([{ id: 'next-root' }])
+
+    expect(flatModel.version).toBe(1)
+    expect(treeModel.version).toBe(1)
+    expect(flatVersions).toEqual([1])
+    expect(treeVersions).toEqual([1])
+  })
+
   it('keeps flat rows allocation-light and builds the id index lazily', () => {
     const rows = [{ id: 'a' }, { id: 'b' }] as const
     const model = new FlatRowModel(rows, { getRowId: (row) => row.id })

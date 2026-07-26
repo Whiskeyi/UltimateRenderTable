@@ -1,9 +1,10 @@
 import type { CellRange } from '@ultigrid/insight'
-import { parseTSV } from '../core/selection.js'
+import { parseTSV } from '@ultigrid/core'
 import { DEMO_CURRENCY } from './currency'
 
 export type SpreadsheetCellValue = string | number
 export type SpreadsheetNumberFormat = 'general' | 'number' | 'currency' | 'percent'
+export type FormulaName = 'SUM' | 'AVERAGE' | 'MIN' | 'MAX' | 'COUNT'
 
 export interface SpreadsheetSelectionStats {
   count: number

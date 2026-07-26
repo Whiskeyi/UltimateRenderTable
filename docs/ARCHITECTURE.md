@@ -5,23 +5,22 @@
 ## 1. 三层边界
 
 ```text
-Studio 交互层
-  └─ Demo、Props/JSON、真实源码实时编辑、i18n、诊断
-       │
-       ▼
-应用层表格 · @ultigrid/insight
-  └─ 行列模型、树形、同列纵向相邻同值合并、条件格式、Cell、导出
-       │
-       ▼
-表格渲染底座 · @ultigrid/core
-  └─ Axis、窗口化、固定 pane、矩形合并、选区、导航、DOM
+Studio / Demo 应用层
+  ├─ 介绍、组件展厅、经营分析、电子表格、i18n、诊断
+  ├───────────────┐
+  ▼               ▼
+@ultigrid/insight  @ultigrid/core
+  │ 应用表格适配       │ 渲染底座
+  └───────────────►│
 ```
 
 依赖只向下：
 
-- Studio 组合并演示公开 API，不进入 npm 运行时。
+- Studio / Demo 的 TypeScript 能力只通过包根组合公开 API，不进入 npm 运行时；经营分析使用 Insight，底座示例可直接使用 Core。`src/main.tsx` 仅作为本仓库开发构建入口组装源码 CSS，发布消费者仍使用公开的 `style.css` 子路径。
 - Insight 把业务数据转换为 Core 的坐标、单元格和矩形协议。
 - Core 不理解 BI、树形、条件规则、导出或“值相同”。
+
+ESLint 以静态边界规则禁止 Core 反向依赖 Insight/Studio/Demo、Insight 深入 Core 内部文件，以及应用层绕过两个包根。`src/bi` 是 `@ultigrid/insight` 的源码目录名；`packages/insight` 是其发布入口和包元数据。
 
 移动端边界同样分层：Core 负责手势仲裁、viewport 坐标与 Axis；Insight 负责业务列、数据坐标和列配置映射；Studio 负责响应式壳层、焦点约束与安全区。
 
@@ -167,7 +166,7 @@ Insight 将 Core viewport 列映射为业务数据列，行号不进入调宽回
 
 相邻合并在 React `useMemo` 中同步计算：主体扫描为 `O(Nᵣ × D)`，流式 key 状态为 `O(D)`，生成结果为 `O(G)` 且默认最多 100,000 条。扫描前，`E` 条显式 `mergedCells` 的阻断预处理还会增加 `O(E × D)` 时间和最坏 `O(E × D)` 临时 blocker 内存，避免生成范围与其重叠。
 
-Studio 在经营分析中分别提供树形与同列纵向相邻同值合并开关，两者可以同时启用。树形模式下，`treeBoundary` 默认使用 `siblings`，合并 run 会在父节点、层级或不可合并节点边界处断开；这不是 Core 的渲染模式。
+Studio 在经营分析中分别提供树形与同列纵向相邻同值合并开关，两者可以同时启用。树形模式下，`treeBoundary` 默认使用 `siblings`，合并 run 会在父节点、层级或不可合并节点边界处断开；这不是 Core 的渲染模式。经营分析的应用实现独立位于 `src/demo/BusinessAnalyticsDemo.tsx`，顶层 `App` 只负责场景组合、诊断与跨场景生命周期。
 
 ### 条件格式与 Cell DOM
 
@@ -202,6 +201,15 @@ XLSX 物化器默认每 500 行让出一次事件循环。0.2.0 的公开 `UltiG
 ### Spreadsheet Demo 会话与数据保护
 
 Spreadsheet 是 Studio 应用集成，不属于 Core/Insight 公共编辑 API。模块内存会在当前页面的顶层场景卸载/重新挂载期间保留最多 50 步 past/future history；`sessionStorage` 只保存当前 worksheet snapshot，用于同标签页刷新恢复，刷新后 past/future 均为空。两者都不是文件保存或服务端同步。卸载、`pagehide` 和 `beforeunload` 会先消费待提交 cell/formula editor；dirty 会话触发浏览器离开确认。语言切换只本地化未被用户编辑的种子 cell。
+
+内部按职责拆分：
+
+- `SpreadsheetDemo` 组合交互事务，Ribbon、公式栏和状态栏只负责展示与事件上报。
+- `useSpreadsheetSelection` / `useWorkbookHistory` 管理 React 生命周期和 history dispatch。
+- `spreadsheetModel`、`spreadsheetFormatting`、`spreadsheetOperations`、`spreadsheetWorkbook` 是无浏览器副作用的纯模型与操作层。
+- `spreadsheetWorkbookPersistence` 是唯一的 workbook 浏览器存储适配层；系统剪贴板、确认框和焦点仍由应用容器编排。
+
+状态仍由单个 Spreadsheet 场景拥有，React state/reducer 足以表达局部 UI、选区和可撤销文档历史。当前没有跨页面共享、服务端同步或多文档协作需求，因此引入 Zustand 只会增加第二套状态边界，不作为默认方案。
 
 剪切在系统剪贴板写入成功且源快照未变化后才删除源数据；写入失败时保留源数据，内部剪贴板仍可支持应用内粘贴。粘贴先校验面积、边界与合并冲突，任何越界都会整笔拒绝，不做静默截断；内部复制粘贴会按目标偏移平移相对公式引用，剪切移动则保留原公式引用。合并会在丢弃非锚点值前确认，重置 dirty 工作表也需确认，两者提交后均进入 undo history。当前没有多工作表、持久文件/服务端保存、自动填充手柄或序列填充。
 
@@ -249,7 +257,7 @@ Spreadsheet 是 Studio 应用集成，不属于 Core/Insight 公共编辑 API。
 
 ## 7. 发布与验证边界
 
-`@ultigrid/core` 根入口只公开 `UltiGridViewport` 与组件契约；Axis、virtualizer、MergeIndex 和 selection 是内部实现。`@ultigrid/insight` 公开应用组件、列定义、行模型、条件规则，以及 `mergeAdjacent` 的 `AdjacentMergeOptions` / `AdjacentMergeColumn` 类型。
+`@ultigrid/core` 根入口公开 `UltiGridViewport`、组件契约，以及应用组合确实复用的 `parseTSV`、`rangeToTSV`、`rangesIntersect`、`moveTabAddress` 纯函数。Axis、virtualizer、MergeIndex 和其余 selection/navigation 实现仍为内部模块。`@ultigrid/insight` 公开应用组件、列定义、行模型、条件规则，以及 `mergeAdjacent` 的 `AdjacentMergeOptions` / `AdjacentMergeColumn` 类型。
 
 两个包只支持包根和 `./style.css` 子路径。Insight CSS 自包含 Core CSS。
 
