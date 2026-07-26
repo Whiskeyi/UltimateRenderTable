@@ -36,6 +36,18 @@ test('exposes pane-spanning cells as logical treegrid rows', async ({ page }) =>
   expect(ownership[0]).toMatchObject({ rowIndex: '1', level: null, expanded: null })
   expect(ownership[1]).toMatchObject({ rowIndex: '2', level: '1', expanded: 'true' })
 
+  const expandedRowCount = await rows.count()
+  const treeToggles = treegrid.getByRole('button')
+  await expect(treeToggles).toHaveCount(6)
+  const firstRootToggle = treeToggles.first()
+  await expect(firstRootToggle).toHaveAttribute('aria-expanded', 'true')
+  await firstRootToggle.click()
+  await expect(firstRootToggle).toHaveAttribute('aria-expanded', 'false')
+  await expect.poll(() => rows.count()).toBeLessThan(expandedRowCount)
+  await firstRootToggle.click()
+  await expect(firstRootToggle).toHaveAttribute('aria-expanded', 'true')
+  await expect(rows).toHaveCount(expandedRowCount)
+
   const session = await page.context().newCDPSession(page)
   const { nodes } = await session.send('Accessibility.getFullAXTree')
   const byId = new Map(nodes.map((node) => [node.nodeId, node]))

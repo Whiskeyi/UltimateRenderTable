@@ -13,7 +13,7 @@ import {
   useEffect,
   useMemo,
   useRef,
-  useState,
+  useSyncExternalStore,
   type CSSProperties,
   type ReactNode,
 } from 'react'
@@ -57,6 +57,7 @@ import {
 } from './columnLayout.js'
 import {
   dataAddressToViewport,
+  viewportAddressToData,
   viewportRangeToData,
   viewportSnapshotToData,
 } from './coordinates.js'
@@ -413,6 +414,17 @@ export function resolveViewportContentVersion(
   return `row-model:${modelVersion};content:${typeof contentVersion}:${serializedContentVersion}`
 }
 
+const NOOP_UNSUBSCRIBE = () => undefined
+
+function useRowModelVersion<TRow>(rowModel: InsightRowModel<TRow> | undefined): number {
+  const subscribe = useCallback(
+    (notify: () => void) => rowModel?.subscribe(notify) ?? NOOP_UNSUBSCRIBE,
+    [rowModel],
+  )
+  const getSnapshot = useCallback(() => rowModel?.version ?? 0, [rowModel])
+  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot)
+}
+
 const DEFAULT_LOCALE_TEXT: UltiGridInsightLocaleText = {
   expandRow: 'Expand row',
   collapseRow: 'Collapse row',
@@ -510,7 +522,7 @@ export function UltiGridInsight<TRow>(props: UltiGridInsightProps<TRow>) {
 
   const shellRef = useRef<HTMLDivElement>(null)
   const viewportApiRef = useRef<UltiGridViewportApi | null>(null)
-  const [modelVersion, setModelVersion] = useState(rowModel?.version ?? 0)
+  const modelVersion = useRowModelVersion(rowModel)
   const activeConditionalRules = (conditionalRules ?? EMPTY_CONDITIONAL_RULES) as readonly ConditionalFormatRule<TRow, InsightCellValue>[]
   const columnCache = useMemo(
     () => new Map<number, InsightColumn<TRow>>(),
@@ -525,24 +537,13 @@ export function UltiGridInsight<TRow>(props: UltiGridInsightProps<TRow>) {
     [columns, getLazyColumn, contentVersion, columnLayoutVersion],
   )
   const rowCache = useMemo(
-    () => new VersionedLruCache<number, TRow>(512, contentVersion),
-    [rowModel, rowSource, rows, modelVersion],
+    () => new LruCache<number, TRow>(512),
+    [rowModel, rowSource, rows, modelVersion, contentVersion],
   )
   const rowMetaCache = useMemo(
-    () => new VersionedLruCache<number, RowMeta>(512, contentVersion),
-    [rowModel, rowSource, modelVersion],
+    () => new LruCache<number, RowMeta>(512),
+    [rowModel, rowSource, modelVersion, contentVersion],
   )
-  // Stable row sources commonly replace data behind the same object identity.
-  // Invalidate synchronously during render so the first cell read for a new
-  // contentVersion cannot observe the previous epoch.
-  rowCache.setVersion(contentVersion)
-  rowMetaCache.setVersion(contentVersion)
-
-  useEffect(() => {
-    if (!rowModel) return
-    setModelVersion(rowModel.version)
-    return rowModel.subscribe((change) => setModelVersion(change.version))
-  }, [rowModel])
 
   const dataRowCount = rowModel?.getRowCount() ?? rowSource?.rowCount ?? rows?.length ?? 0
   const dataColumnCount = requestedColumnCount ?? columns?.length ?? 0
@@ -597,15 +598,15 @@ export function UltiGridInsight<TRow>(props: UltiGridInsightProps<TRow>) {
         }
       : null
   const handleViewportActiveCellChange = useCallback((address: CellAddress | null) => {
-    if (!address) {
-      onActiveCellChange?.(null)
-      return
-    }
-    const row = address.row - headerOffset
-    const column = address.column - rowNumberOffset
     onActiveCellChange?.(
-      row >= 0 && row < dataRowCount && column >= 0 && column < dataColumnCount
-        ? { row, column }
+      address
+        ? viewportAddressToData(
+            address,
+            headerOffset,
+            rowNumberOffset,
+            dataRowCount,
+            dataColumnCount,
+          )
         : null,
     )
   }, [dataColumnCount, dataRowCount, headerOffset, onActiveCellChange, rowNumberOffset])
@@ -616,17 +617,21 @@ export function UltiGridInsight<TRow>(props: UltiGridInsightProps<TRow>) {
       onSelectionEndpointsChange?.(null)
       return
     }
-    const toData = (address: CellAddress): CellAddress => ({
-      row: address.row - headerOffset,
-      column: address.column - rowNumberOffset,
-    })
-    const anchor = toData(endpoints.anchor)
-    const focus = toData(endpoints.focus)
-    const valid = [anchor, focus].every((address) => (
-      address.row >= 0 && address.row < dataRowCount
-      && address.column >= 0 && address.column < dataColumnCount
-    ))
-    onSelectionEndpointsChange?.(valid ? { anchor, focus } : null)
+    const anchor = viewportAddressToData(
+      endpoints.anchor,
+      headerOffset,
+      rowNumberOffset,
+      dataRowCount,
+      dataColumnCount,
+    )
+    const focus = viewportAddressToData(
+      endpoints.focus,
+      headerOffset,
+      rowNumberOffset,
+      dataRowCount,
+      dataColumnCount,
+    )
+    onSelectionEndpointsChange?.(anchor && focus ? { anchor, focus } : null)
   }, [
     dataColumnCount,
     dataRowCount,
@@ -685,12 +690,15 @@ export function UltiGridInsight<TRow>(props: UltiGridInsightProps<TRow>) {
   }, [columns, getLazyColumn, columnCache])
 
   const handleViewportCellClick = useCallback((address: CellAddress, cell: { value: unknown }) => {
-    const rowIndex = address.row - headerOffset
-    const columnIndex = address.column - rowNumberOffset
-    if (
-      rowIndex < 0 || rowIndex >= dataRowCount
-      || columnIndex < 0 || columnIndex >= dataColumnCount
-    ) return
+    const dataAddress = viewportAddressToData(
+      address,
+      headerOffset,
+      rowNumberOffset,
+      dataRowCount,
+      dataColumnCount,
+    )
+    if (!dataAddress) return
+    const { row: rowIndex, column: columnIndex } = dataAddress
     const row = getRow(rowIndex)
     if (row === undefined) return
     const column = getColumn(columnIndex)
@@ -1272,11 +1280,15 @@ export function UltiGridInsight<TRow>(props: UltiGridInsightProps<TRow>) {
       },
       getActiveCell() {
         const active = viewportApiRef.current?.getActiveCell()
-        if (!active) return null
-        const row = active.row - headerOffset
-        const column = active.column - rowNumberOffset
-        if (row < 0 || row >= dataRowCount || column < 0 || column >= dataColumnCount) return null
-        return { row, column }
+        return active
+          ? viewportAddressToData(
+              active,
+              headerOffset,
+              rowNumberOffset,
+              dataRowCount,
+              dataColumnCount,
+            )
+          : null
       },
       focus() {
         viewportApiRef.current?.focus()
@@ -1561,21 +1573,16 @@ function trimOldest<TKey, TValue>(cache: Map<TKey, TValue>, maximum: number): vo
 /**
  * Small bounded cache for virtual row data.
  *
- * Version changes clear entries before reads, while successful reads refresh
- * recency. This implementation helper is not re-exported by the package barrel.
+ * Successful reads refresh recency. This implementation helper is not
+ * re-exported by the package barrel.
  */
-export class VersionedLruCache<TKey, TValue> {
+export class LruCache<TKey, TValue> {
   private readonly entries = new Map<TKey, TValue>()
-  private version: unknown
 
-  constructor(
-    private readonly maximum: number,
-    version?: unknown,
-  ) {
+  constructor(private readonly maximum: number) {
     if (!Number.isSafeInteger(maximum) || maximum < 1) {
       throw new RangeError(`maximum must be a positive safe integer; received ${maximum}`)
     }
-    this.version = version
   }
 
   get size(): number {
@@ -1598,11 +1605,5 @@ export class VersionedLruCache<TKey, TValue> {
       if (oldest.done) break
       this.entries.delete(oldest.value)
     }
-  }
-
-  setVersion(version: unknown): void {
-    if (Object.is(version, this.version)) return
-    this.version = version
-    this.entries.clear()
   }
 }

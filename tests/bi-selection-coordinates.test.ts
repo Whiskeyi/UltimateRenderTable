@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   dataAddressToViewport,
   dataRangeToViewport,
+  viewportAddressToData,
   viewportRangeToData,
   viewportSnapshotToData,
 } from '../src/bi/coordinates'
@@ -20,6 +21,14 @@ describe('UltiGridInsight data coordinates', () => {
       columnStart: 4,
       columnEnd: 9,
     })
+  })
+
+  it('accepts only data-cell addresses when removing table chrome', () => {
+    expect(viewportAddressToData({ row: 5, column: 8 }, 1, 1, 5, 8))
+      .toEqual({ row: 4, column: 7 })
+    expect(viewportAddressToData({ row: 0, column: 2 }, 1, 1, 5, 8)).toBeNull()
+    expect(viewportAddressToData({ row: 2, column: 0 }, 1, 1, 5, 8)).toBeNull()
+    expect(viewportAddressToData({ row: 6, column: 8 }, 1, 1, 5, 8)).toBeNull()
   })
 
   it('removes headers and row numbers from selection callbacks', () => {

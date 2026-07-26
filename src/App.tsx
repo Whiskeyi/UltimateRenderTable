@@ -23,7 +23,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type ErrorInfo,
   type ReactNode,
 } from 'react'
 import {
@@ -73,10 +72,6 @@ class DemoStageErrorBoundary extends Component<
 
   static getDerivedStateFromError(error: Error) {
     return { error }
-  }
-
-  componentDidCatch(_error: Error, _info: ErrorInfo) {
-    // The studio keeps the failure local so the props editor remains usable.
   }
 
   render() {

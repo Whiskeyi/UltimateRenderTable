@@ -194,14 +194,15 @@ export function initializeWorkbookHistory(
 export function persistWorkbookHistory(
   history: WorkbookHistory,
   options: { immediate?: boolean } = {},
-): boolean {
+): void {
   memoryHistory = history
   setSpreadsheetSessionDirty(history.dirty)
-  if (typeof window === 'undefined') return false
+  if (typeof window === 'undefined') return
   pendingPersistence = history
   if (options.immediate) {
     cancelScheduledPersistence()
-    return flushPendingPersistence()
+    flushPendingPersistence()
+    return
   }
   if (persistenceTimer === null) {
     persistenceTimer = window.setTimeout(() => {
@@ -209,7 +210,6 @@ export function persistWorkbookHistory(
       flushPendingPersistence()
     }, 120)
   }
-  return true
 }
 
 export function serializeWorkbookHistory(history: WorkbookHistory): string {
@@ -310,10 +310,10 @@ function isMergedRange(value: unknown): value is MergedCellRange {
     && range.rowEnd! >= range.rowStart! && range.columnEnd! >= range.columnStart!
 }
 
-function flushPendingPersistence(): boolean {
+function flushPendingPersistence(): void {
   const history = pendingPersistence
   pendingPersistence = null
-  if (!history || typeof window === 'undefined') return false
+  if (!history || typeof window === 'undefined') return
   try {
     // Full undo/redo remains in module memory across scenario switches. Reload
     // recovery stores one compact snapshot so formatting a large range does
@@ -322,9 +322,8 @@ function flushPendingPersistence(): boolean {
       SESSION_STORAGE_KEY,
       serializeWorkbookHistory({ ...history, past: [], future: [] }),
     )
-    return true
   } catch {
-    return false
+    // Session recovery is best-effort; module memory remains authoritative.
   }
 }
 

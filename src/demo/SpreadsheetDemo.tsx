@@ -206,14 +206,12 @@ export function SpreadsheetDemo({
   const ribbonRef = useRef<HTMLDivElement>(null)
   const formulaInputRef = useRef<HTMLInputElement>(null)
   const historyRef = useRef(history)
-  const latestSheetRef = useRef(sheet)
   const activeCellRef = useRef(activeCell)
   const editorRef = useRef(editor)
   const formulaDraftRef = useRef(formulaDraft)
   const formulaEditingRef = useRef(formulaEditing)
   const headerSelectionRef = useRef<HeaderSelectionSession | null>(null)
   historyRef.current = history
-  latestSheetRef.current = sheet
   activeCellRef.current = activeCell
   formulaDraftRef.current = formulaDraft
   formulaEditingRef.current = formulaEditing
@@ -226,7 +224,6 @@ export function SpreadsheetDemo({
       setCutSelection(null)
     }
     historyRef.current = next
-    latestSheetRef.current = next.present
     persistWorkbookHistory(next)
     setHistory(next)
   }, [])
@@ -259,7 +256,6 @@ export function SpreadsheetDemo({
       setCutSelection(null)
     }
     historyRef.current = next
-    latestSheetRef.current = next.present
     persistWorkbookHistory(next)
     setHistory(next)
   }, [locale])
@@ -279,7 +275,6 @@ export function SpreadsheetDemo({
         ? current
         : workbookReducer(current, { type: 'commit', snapshot })
       historyRef.current = next
-      latestSheetRef.current = next.present
       persistWorkbookHistory(next, { immediate: true })
       return next
     }
@@ -364,7 +359,6 @@ export function SpreadsheetDemo({
   }, [apiRef])
 
   const commitSnapshot = useCallback((snapshot: WorksheetSnapshot) => {
-    latestSheetRef.current = snapshot
     dispatch({ type: 'commit', snapshot })
   }, [dispatch])
 
@@ -425,7 +419,7 @@ export function SpreadsheetDemo({
   const commitCellInput = useCallback((address: CellAddress, draft: string) => {
     const nextValue = parseCellInput(draft)
     const key = cellKey(address.row, address.column)
-    const currentSheet = latestSheetRef.current
+    const currentSheet = historyRef.current.present
     const currentValue = currentSheet.values.get(key) ?? ''
     if (Object.is(currentValue, nextValue)) return
     const nextValues = new Map(currentSheet.values)
@@ -536,12 +530,12 @@ export function SpreadsheetDemo({
     const operationId = clipboardOperationRef.current + 1
     clipboardOperationRef.current = operationId
     const sourceSelection = { ...selection }
-    let currentSheet = consumePendingEditor(latestSheetRef.current, editorRef.current)
-    if (currentSheet !== latestSheetRef.current) {
+    let currentSheet = consumePendingEditor(historyRef.current.present, editorRef.current)
+    if (currentSheet !== historyRef.current.present) {
       editorRef.current = null
       setEditor(null)
       commitSnapshot(currentSheet)
-      currentSheet = latestSheetRef.current
+      currentSheet = historyRef.current.present
     }
     const sourceRevision = historyRef.current.revision
     const currentEvaluator = createSpreadsheetEvaluator(currentSheet.values, {
@@ -590,7 +584,7 @@ export function SpreadsheetDemo({
       }
       if (
         historyRef.current.revision !== sourceRevision
-        || latestSheetRef.current !== currentSheet
+        || historyRef.current.present !== currentSheet
       ) {
         notify(translate(locale, 'spreadsheet.feedback.cutChanged'))
         restoreGridFocus()
@@ -614,7 +608,7 @@ export function SpreadsheetDemo({
     source?: CellAddress,
     cutClipboard?: InternalClipboard,
   ) => {
-    const currentSheet = consumePendingEditor(latestSheetRef.current, editorRef.current)
+    const currentSheet = consumePendingEditor(historyRef.current.present, editorRef.current)
     const matrixWidth = matrix.reduce((maximum, row) => Math.max(maximum, row.length), 0)
     const cellCount = matrix.length * matrixWidth
     if (matrix.length === 0 || matrixWidth === 0) return
@@ -622,7 +616,7 @@ export function SpreadsheetDemo({
       cutClipboard
       && (
         historyRef.current.revision !== cutClipboard.sourceRevision
-        || currentSheet !== latestSheetRef.current
+        || currentSheet !== historyRef.current.present
       )
     ) {
       clipboardRef.current = null
@@ -815,7 +809,7 @@ export function SpreadsheetDemo({
   const insertFunction = useCallback((functionName: FormulaName) => {
     commitPendingFormulaDraft()
     const readRawValue = (row: number, column: number) => (
-      latestSheetRef.current.values.get(cellKey(row, column)) ?? ''
+      historyRef.current.present.values.get(cellKey(row, column)) ?? ''
     )
     const source = selection ?? singleCellRange(activeCell)
     let target = activeCell
@@ -863,7 +857,7 @@ export function SpreadsheetDemo({
   const beginFormulaEntry = useCallback(() => {
     commitPendingFormulaDraft()
     const rawValue = String(
-      latestSheetRef.current.values.get(cellKey(activeCell.row, activeCell.column)) ?? '',
+      historyRef.current.present.values.get(cellKey(activeCell.row, activeCell.column)) ?? '',
     )
     const draft = rawValue.startsWith('=') ? rawValue : '='
     setShowFormulaBar(true)
@@ -889,7 +883,6 @@ export function SpreadsheetDemo({
     setEditor(null)
     setFormulaEditing(false)
     setFormulaDraft(String(snapshot.values.get(cellKey(DEFAULT_SELECTION.rowStart, DEFAULT_SELECTION.columnStart)) ?? ''))
-    latestSheetRef.current = snapshot
     dispatch({
       type: 'commit',
       snapshot,
@@ -904,7 +897,6 @@ export function SpreadsheetDemo({
   const undo = useCallback(() => {
     const previous = historyRef.current.past.at(-1)
     if (!previous) return
-    latestSheetRef.current = previous
     dispatch({ type: 'undo' })
     editorRef.current = null
     setEditor(null)
@@ -915,7 +907,6 @@ export function SpreadsheetDemo({
   const redo = useCallback(() => {
     const next = historyRef.current.future[0]
     if (!next) return
-    latestSheetRef.current = next
     dispatch({ type: 'redo' })
     editorRef.current = null
     setEditor(null)

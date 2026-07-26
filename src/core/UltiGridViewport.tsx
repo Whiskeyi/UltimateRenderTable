@@ -723,7 +723,7 @@ export function UltiGridViewport<TValue = CellPrimitive, TMeta = unknown>(
     if (!selection || !controlledActiveCell) return null
     const active = clampAddressToRange(controlledActiveCell, selection)
     const merge = mergeIndex.getAt(active.row, active.column)
-    return merge && rangeContainsRange(selection, merge)
+    return merge && rangeContains(selection, merge)
       ? { row: merge.rowStart, column: merge.columnStart }
       : active
   }, [controlledActiveCell, mergeIndex, selection])
@@ -1184,7 +1184,7 @@ export function UltiGridViewport<TValue = CellPrimitive, TMeta = unknown>(
     const activeMerge = intendedActive
       ? mergeIndex.getAt(intendedActive.row, intendedActive.column)
       : undefined
-    const stableActive = intendedActive && activeMerge && rangeContainsRange(stableRange!, activeMerge)
+    const stableActive = intendedActive && activeMerge && rangeContains(stableRange!, activeMerge)
       ? { row: activeMerge.rowStart, column: activeMerge.columnStart }
       : intendedActive
     const stableModel = stableIntent && stableRange ? {
@@ -1357,20 +1357,26 @@ export function UltiGridViewport<TValue = CellPrimitive, TMeta = unknown>(
     }
   }, [])
 
-  const scrollToCellRef = useRef(scrollToCell)
-  const copySelectionRef = useRef(copySelection)
-  const columnAxisRef = useRef(columnAxis)
-  const columnCountRef = useRef(columnCount)
-  scrollToCellRef.current = scrollToCell
-  copySelectionRef.current = copySelection
-  columnAxisRef.current = columnAxis
-  columnCountRef.current = columnCount
+  const apiBindingsRef = useRef({
+    scrollToCell,
+    copySelection,
+    columnAxis,
+    columnCount,
+  })
+  useIsomorphicLayoutEffect(() => {
+    apiBindingsRef.current = {
+      scrollToCell,
+      copySelection,
+      columnAxis,
+      columnCount,
+    }
+  }, [columnAxis, columnCount, copySelection, scrollToCell])
 
   useEffect(() => {
     if (!apiRef) return
     const api: UltiGridViewportApi = {
-      scrollToCell: (address, align) => scrollToCellRef.current(address, align),
-      copySelection: () => copySelectionRef.current(),
+      scrollToCell: (address, align) => apiBindingsRef.current.scrollToCell(address, align),
+      copySelection: () => apiBindingsRef.current.copySelection(),
       getSelection: () => selectionModelRef.current?.range ?? currentSelectionRef.current,
       getActiveCell: () => selectionModelRef.current?.active ?? (currentSelectionRef.current
         ? {
@@ -1381,8 +1387,8 @@ export function UltiGridViewport<TValue = CellPrimitive, TMeta = unknown>(
       getColumnWidth: (viewportColumn) => (
         Number.isSafeInteger(viewportColumn)
         && viewportColumn >= 0
-        && viewportColumn < columnCountRef.current
-          ? columnAxisRef.current.getSize(viewportColumn)
+        && viewportColumn < apiBindingsRef.current.columnCount
+          ? apiBindingsRef.current.columnAxis.getSize(viewportColumn)
           : undefined
       ),
       focus: () => rootRef.current?.focus(),
@@ -3003,11 +3009,6 @@ function selectionEndpointsEqual(
       && addressesEqual(left.anchor, right.anchor)
       && addressesEqual(left.focus, right.focus),
   )
-}
-
-function rangeContainsRange(outer: CellRange, inner: CellRange): boolean {
-  return outer.rowStart <= inner.rowStart && outer.rowEnd >= inner.rowEnd
-    && outer.columnStart <= inner.columnStart && outer.columnEnd >= inner.columnEnd
 }
 
 function normalizeAutoSize(value: UltiGridViewportProps['autoSize']) {

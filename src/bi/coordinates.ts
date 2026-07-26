@@ -11,6 +11,20 @@ export function dataAddressToViewport(
   }
 }
 
+export function viewportAddressToData(
+  address: CellAddress,
+  headerRows: number,
+  rowNumberColumns: number,
+  rowCount: number,
+  columnCount: number,
+): CellAddress | null {
+  const row = address.row - headerRows
+  const column = address.column - rowNumberColumns
+  return row >= 0 && row < rowCount && column >= 0 && column < columnCount
+    ? { row, column }
+    : null
+}
+
 export function dataRangeToViewport(
   range: CellRange,
   headerRows: number,

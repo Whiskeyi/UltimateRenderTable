@@ -1,9 +1,9 @@
 import type { CSSProperties, ReactElement, ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
+  LruCache,
   resolveViewportContentVersion,
   UltiGridInsight,
-  VersionedLruCache,
   type InsightColumnDefinition,
   type UltiGridInsightProps,
 } from '../src/bi/UltiGridInsight'
@@ -58,6 +58,10 @@ vi.mock('react', async (importOriginal) => ({
     typeof initialValue === 'function' ? (initialValue as () => T)() : initialValue,
     () => undefined,
   ],
+  useSyncExternalStore: (
+    _subscribe: (notify: () => void) => () => void,
+    getSnapshot: () => unknown,
+  ) => getSnapshot(),
 }))
 
 interface TestRow {
@@ -99,20 +103,8 @@ function renderConditionalFormat(viewport: ViewportElementProps) {
 describe('Insight versioned row caches', () => {
   beforeEach(() => hookHarness.reset())
 
-  it('invalidates stable-source rows and metadata when contentVersion changes', () => {
-    const cache = new VersionedLruCache<number, { value: string }>(4, 'v1')
-    cache.set(0, { value: 'old' })
-
-    cache.setVersion('v1')
-    expect(cache.get(0)?.value).toBe('old')
-
-    cache.setVersion('v2')
-    expect(cache.get(0)).toBeUndefined()
-    expect(cache.size).toBe(0)
-  })
-
   it('retains recently-read entries when the bounded cache evicts', () => {
-    const cache = new VersionedLruCache<number, string>(2)
+    const cache = new LruCache<number, string>(2)
     cache.set(0, 'leading')
     cache.set(1, 'middle')
     expect(cache.get(0)).toBe('leading')
@@ -122,6 +114,25 @@ describe('Insight versioned row caches', () => {
     expect(cache.get(0)).toBe('leading')
     expect(cache.get(1)).toBeUndefined()
     expect(cache.get(2)).toBe('trailing')
+  })
+
+  it('invalidates cached rows from a stable source when contentVersion changes', () => {
+    const rows: TestRow[] = [{ id: 'row-1', value: 1 }]
+    const columns: InsightColumnDefinition<TestRow>[] = [{
+      id: 'value',
+      getValue: (row) => row.value,
+    }]
+    const baseProps = {
+      rows,
+      columns,
+      showHeader: false,
+      showRowNumbers: false,
+    } satisfies Omit<UltiGridInsightProps<TestRow>, 'contentVersion'>
+
+    expect(renderInsight({ ...baseProps, contentVersion: 1 }).getCell(0, 0).value).toBe(1)
+    rows[0] = { id: 'row-1', value: 2 }
+    expect(renderInsight({ ...baseProps, contentVersion: 1 }).getCell(0, 0).value).toBe(1)
+    expect(renderInsight({ ...baseProps, contentVersion: 2 }).getCell(0, 0).value).toBe(2)
   })
 
   it('invalidates a stable lazy-column getter when contentVersion changes', () => {

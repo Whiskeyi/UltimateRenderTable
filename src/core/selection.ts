@@ -1,19 +1,14 @@
-export interface CellPosition {
-  readonly row: number
-  readonly column: number
-}
+import type {
+  CellAddress,
+  CellRange as ViewportCellRange,
+} from './viewportTypes.js'
+
+export type CellPosition = Readonly<CellAddress>
+export type CellRange = Readonly<ViewportCellRange>
 
 export interface CellSelection {
   readonly anchor: CellPosition
   readonly focus: CellPosition
-}
-
-export interface CellRange {
-  /** Inclusive bounds. */
-  readonly rowStart: number
-  readonly rowEnd: number
-  readonly columnStart: number
-  readonly columnEnd: number
 }
 
 export interface GridSize {

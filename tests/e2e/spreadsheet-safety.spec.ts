@@ -31,6 +31,13 @@ test('preserves workbook edits across scenarios and localizes only untouched see
   await expect(formulaBar).toHaveValue('913579')
   await expect(page.getByText('2026 Sales Plan & Actual Tracker')).toBeVisible()
   await expect(page.getByText('2026 销售计划与实际跟踪')).toHaveCount(0)
+
+  await selectAddress(page, 'Z199')
+  await formulaBar.fill('pending draft')
+  await page.locator('[data-scenario="intro"]').click()
+  await page.locator('[data-scenario="spreadsheet"]').click()
+  await selectAddress(page, 'Z199')
+  await expect(formulaBar).toHaveValue('pending draft')
 })
 
 test('rejects overflow paste and never deletes a cut when clipboard writing fails', async ({ page }) => {
