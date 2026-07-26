@@ -10,6 +10,8 @@ async function selectAddress(page: import('@playwright/test').Page, address: str
   const nameBox = page.locator('.spreadsheet-name-box')
   await nameBox.fill(address)
   await nameBox.press('Enter')
+  await expect(nameBox).not.toBeFocused()
+  await expect(nameBox).toHaveValue(address.toUpperCase())
 }
 
 test('preserves workbook edits across scenarios and localizes only untouched seed cells', async ({ page }) => {

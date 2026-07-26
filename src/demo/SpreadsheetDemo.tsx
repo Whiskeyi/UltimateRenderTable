@@ -248,8 +248,8 @@ export function SpreadsheetDemo({
   }, [activeKey, activeRawValue, formulaEditing, history.revision])
 
   useEffect(() => {
-    if (!nameEditing) setNameDraft(selectionLabel(singleCellRange(activeCell)))
-  }, [activeCell, nameEditing])
+    if (!nameEditing) setNameDraft(selectionLabel(selection))
+  }, [nameEditing, selection])
 
   useEffect(() => {
     const next = localizeWorkbookHistory(historyRef.current, locale, createInitialSheet)

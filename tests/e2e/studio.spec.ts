@@ -162,7 +162,7 @@ test.describe('mobile layout', () => {
       await ribbon.evaluate((element) => element.scrollLeft) - scrollBeforeOpen,
     )).toBeLessThanOrEqual(1)
 
-    await page.locator('.spreadsheet-grid').click({ position: { x: 20, y: 80 } })
+    await page.getByRole('tab', { name: '开始', exact: true }).click()
     await expect(colorTrigger).toHaveAttribute('aria-expanded', 'false')
     await colorTrigger.click()
     await page.keyboard.press('Escape')
