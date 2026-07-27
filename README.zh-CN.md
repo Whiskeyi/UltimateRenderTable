@@ -8,6 +8,20 @@ UltiGrid 将 `100,000 × 100,000` 视为逻辑坐标空间。数据按坐标读�
 
 > 当前版本为 **0.2.0 / Alpha**。项目不承诺跨设备固定 FPS；性能结论应基于明确的浏览器、硬件、数据与渲染器配置。
 
+## 界面预览
+
+### Performance Studio
+
+![UltiGrid Performance Studio 总览](docs/images/ultigrid-studio-overview.jpg)
+
+### 业务分析
+
+![UltiGrid 业务分析表格与实时 Props](docs/images/ultigrid-business-analytics.jpg)
+
+### 电子表格
+
+![UltiGrid 电子表格工作台](docs/images/ultigrid-spreadsheet.jpg)
+
 ## 三层仓库架构
 
 | 层 | 目录 / 产物 | 职责 |

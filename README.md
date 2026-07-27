@@ -8,6 +8,20 @@ UltiGrid treats `100,000 × 100,000` as a logical coordinate space. Data is read
 
 > Current status: **0.2.0 / Alpha**. The project does not promise a fixed cross-device FPS; performance results need an explicit browser, device, dataset, and renderer configuration.
 
+## Preview
+
+### Performance Studio
+
+![UltiGrid Performance Studio overview](docs/images/ultigrid-studio-overview.jpg)
+
+### Business analytics
+
+![UltiGrid business analytics grid with live props](docs/images/ultigrid-business-analytics.jpg)
+
+### Spreadsheet
+
+![UltiGrid spreadsheet workspace](docs/images/ultigrid-spreadsheet.jpg)
+
 ## Three-layer repository architecture
 
 | Layer | Directory / artifact | Responsibility |
