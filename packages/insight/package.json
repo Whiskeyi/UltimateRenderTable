@@ -38,7 +38,7 @@
   "dependencies": {
     "@ultigrid/core": "^0.2.0",
     "html-to-image": "^1.11.13",
-    "lucide-react": "^0.468.0",
+    "lucide-react": "^1.27.0",
     "write-excel-file": "^4.1.1"
   },
   "scripts": {
